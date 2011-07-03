@@ -16,6 +16,7 @@ module PathQuery
             @constraints = []
             @joins = []
             @views = []
+            @used_codes = []
         end
 
         def to_xml
@@ -74,7 +75,7 @@ module PathQuery
         end
 
         def add_constraint(parameters)
-            classes = [AttributeConstraint, SubClassConstraint, 
+            classes = [SingleValueConstraint, SubClassConstraint, 
                 LookupConstraint, MultiValueConstraint, 
                 UnaryConstraint, LoopConstraint, ListConstraint]
             attr_keys = parameters.keys
@@ -106,8 +107,54 @@ module PathQuery
                 con.send(key.to_s + '=', value)
             }
             con.validate
+            if con.respond_to?(:code)
+                code = con.code
+                if code.nil?
+                    con.code = next_code
+                else
+                    code = code.to_s
+                    if !is_valid_codestr(code)
+                        raise ArgumentError, "Coded must be between A and Z, got: #{code}"
+                    end
+                    if @used_codes.include?(code[0])
+                        con.code = next_code
+                    else
+                        @used_codes << code[0]
+                    end
+                end
+            end
 
             @constraints << con
+        end
+
+        private 
+
+        def lowest_code 
+            return "A"[0]
+        end
+
+        def highest_code
+            return "Z"[0]
+        end
+
+        def is_valid_codestr(str)
+            return (str.length == 1) && is_valid_code(str[0])
+        end
+
+        def is_valid_code(chr)
+            return ((chr >= lowest_code) && (chr <= highest_code))
+        end
+
+        def next_code
+            c = lowest_code
+            while is_valid_code(c)
+                if !@used_codes.include?(c)
+                    @used_codes << c
+                    return c.chr
+                end
+                c += 1
+            end
+            raise RuntimeError, "Maximum number of codes reached - all 26 have been allocated"
         end
 
     end
@@ -163,10 +210,49 @@ module PathQuery
 
     end
 
-    class AttributeConstraint
+    module ObjectConstraint
+        def validate
+            if @path.elements.last.is_a?(AttributeDescriptor)
+                raise ArgumentError, "#{self.class.name}s must be on objects or references to objects"
+            end
+        end
+    end
+
+    module AttributeConstraint
+        def validate
+            if !@path.elements.last.is_a?(AttributeDescriptor)
+                raise ArgumentError, "Attribute constraints must be on attributes"
+            end
+        end
+
+        def validate_value(val)
+            nums = ["Float", "Double", "float", "double"]
+            ints = ["Integer", "int"]
+            bools = ["Boolean", "boolean"]
+            dataType = @path.elements.last.dataType.split(".").last
+            if nums.include?(dataType)
+                if !val.is_a?(Numeric)
+                    raise ArgumentError, "value #{val} is not numeric for #{@path}"
+                end
+            end
+            if ints.include?(dataType)
+                if !val.is_a?(Integer)
+                    raise ArgumentError, "value #{val} is not an integer for #{@path}"
+                end
+            end
+            if bools.include?(dataType)
+                if !val.is_a?(TrueClass) && !val.is_a?(FalseClass)
+                    raise ArgumentError, "value #{val} is not a boolean value for #{@path}"
+                end
+            end
+        end
+    end
+
+    class SingleValueConstraint
         @valid_ops = ["=", ">", "<", ">=", "<=", "!="]
         include PathFeature
         include Coded
+        include AttributeConstraint
         attr_accessor :value
 
         def to_elem
@@ -180,42 +266,15 @@ module PathQuery
             return elem
         end
 
-        def validate
-            if !@path.elements.last.is_a?(AttributeDescriptor)
-                raise ArgumentError, "Attribute constraints must be on attributes"
-            end
-            nums = ["Float", "Double", "float", "double"]
-            ints = ["Integer", "int"]
-            bools = ["Boolean", "boolean"]
-            dataType = @path.elements.last.dataType.split(".").last
-            if nums.include?(dataType)
-                if !@value.is_a?(Numeric)
-                    raise ArgumentError, "value #{@value} is not numeric for #{@path}"
-                end
-            end
-            if ints.include?(dataType)
-                if !@value.is_a?(Integer)
-                    raise ArgumentError, "value #{@value} is not an integer for #{@path}"
-                end
-            end
-            if bools.include?(dataType)
-                if !@value.is_a?(TrueClass) && !@value.is_a?(FalseClass)
-                    raise ArgumentError, "value #{@value} is not a boolean value for #{@path}"
-                end
-            end
+        def validate 
+            super
+            validate_value(@value)
         end
 
     end
 
-    module ObjectConstraint
-        def validate
-            if @path.elements.last.is_a?(AttributeDescriptor)
-                raise ArgumentError, "#{self.class.name}s must be on objects or references to objects"
-            end
-        end
-    end
 
-    class ListConstraint < AttributeConstraint
+    class ListConstraint < SingleValueConstraint
         @valid_ops = ["IN", "NOT IN"]
         include ObjectConstraint
     end
@@ -291,7 +350,8 @@ module PathQuery
     class MultiValueConstraint 
         include PathFeature
         include Coded
-        @valid_ops = ["ONE OF", "ONE OF"]
+        include AttributeConstraint
+        @valid_ops = ["ONE OF", "NONE OF"]
 
         attr_accessor :values
         def to_elem 
@@ -303,6 +363,13 @@ module PathQuery
                 elem.add_element(value)
             }
             return elem
+        end
+
+        def validate
+            super
+            @values.each do |val|
+                validate_value(val)
+            end
         end
     end
 

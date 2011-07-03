@@ -542,4 +542,197 @@ class TestQuery < Test::Unit::TestCase
             })
         end
     end
+
+    def test_multi_constraints
+        query = PathQuery::Query.new(@model)
+        query.add_constraint({
+            :path => "Employee.name",
+            :op => "ONE OF",
+            :values => %w{foo bar baz}
+        })
+
+        query.add_constraint({
+            :path => "Employee.age",
+            :op => "NONE OF",
+            :values => [1, 2, 3]
+        })
+
+        conA = query.constraints[0]
+        conB = query.constraints[1]
+
+        assert_equal(conA.path.to_s, "Employee.name")
+        assert_equal(conB.path.to_s, "Employee.age")
+
+        assert_equal(conA.op, "ONE OF")
+        assert_equal(conB.op, "NONE OF")
+
+        assert_equal(conA.values, ["foo", "bar", "baz"])
+        assert_equal(conB.values, [1, 2, 3])
+    end
+
+    def test_unqualified_multi_constraint
+        query = PathQuery::Query.new(@model, "Employee")
+        query.add_constraint({
+            :path => "department.name",
+            :op => "ONE OF",
+            :values => %w{Sales Marketing Janitorial}
+        })
+
+        conA = query.constraints[0]
+        assert_equal(conA.path.to_s, "Employee.department.name")
+        assert_equal(conA.op, "ONE OF")
+        assert_equal(conA.values, %w{Sales Marketing Janitorial})
+    end
+
+    def test_bad_multi_constraint
+        query = PathQuery::Query.new(@model, "Employee")
+        assert_raise ArgumentError do
+            query.add_constraint({
+                :path => "name",
+                :op => "ONE OF",
+                :value => "foo"
+            })
+        end
+
+        query = PathQuery::Query.new(@model, "Employee")
+        assert_raise ArgumentError do
+            query.add_constraint({
+                :path => "Employee",
+                :op => "ONE OF",
+                :values => ["foo", "bar", "baz"]
+            })
+        end
+
+        query = PathQuery::Query.new(@model, "Employee")
+        assert_raise ArgumentError do
+            query.add_constraint({
+                :path => "Employee.age",
+                :op => "ONE OF",
+                :values => [1, 2, 3, "foo", 5]
+            })
+        end
+    end
+
+    def test_codes
+        query = PathQuery::Query.new(@model, "Employee")
+        # Check allocation of default codes
+        query.add_constraint({
+            :path => "name",
+            :op => "=",
+            :value => "foo"
+        })
+
+        # Check that subclass constraints don't get codes
+        query.add_constraint({
+            :path => "department.employees",
+            :sub_class => "Manager"
+        })
+
+        # Check default code is next available
+        query.add_constraint({
+            :path => "name",
+            :op => "IS NOT NULL"
+        })
+
+        # Check allocation of custom codes
+        query.add_constraint({
+            :path => "name",
+            :op => "IS NOT NULL",
+            :code => "Q"
+        })
+
+        # Check that we remember allocation of default codes
+        query.add_constraint({
+            :path => "name",
+            :op => "IS NOT NULL",
+            :code => "A"
+        })
+
+        # Check that we remember allocation of custom codes
+        query.add_constraint({
+            :path => "name",
+            :op => "IS NOT NULL",
+            :code => "Q"
+        })
+
+        codes = query.constraints.map { |x| 
+            begin 
+                x.code 
+            rescue
+                nil
+            end
+        }
+        assert_equal(codes, ["A", nil, "B", "Q", "C", "D"])
+    end
+
+    def test_code_exhaustion
+        query = PathQuery::Query.new(@model, "Employee")
+        # Check we can allocate all 26 default codes
+        assert_nothing_raised do
+            26.times do
+                query.add_constraint({
+                    :path => "name",
+                    :op => "IS NOT NULL"
+                })
+            end
+        end
+        assert_equal(query.constraints.first.code, "A")
+        assert_equal(query.constraints.last.code, "Z")
+
+        # But 27 is too many
+        query = PathQuery::Query.new(@model, "Employee")
+        assert_raise RuntimeError do
+            27.times do
+                query.add_constraint({
+                    :path => "name",
+                    :op => "IS NOT NULL"
+                })
+            end
+        end
+
+        # One more tips the balance, even with a custom code
+        query = PathQuery::Query.new(@model, "Employee")
+        assert_raise RuntimeError do
+            26.times do
+                query.add_constraint({
+                    :path => "name",
+                    :op => "IS NOT NULL"
+                })
+            end
+            query.add_constraint({
+                :path => "name",
+                :op => "IS NOT NULL",
+                :code => "Z"
+            })
+        end
+    end
+
+    def test_illegal_codes
+        query = PathQuery::Query.new(@model, "Employee")
+        assert_raise ArgumentError do
+            query.add_constraint({
+                :path => "name",
+                :op => "IS NOT NULL",
+                :code => "a"
+            })
+        end
+
+        query = PathQuery::Query.new(@model, "Employee")
+        assert_raise ArgumentError do
+            query.add_constraint({
+                :path => "name",
+                :op => "IS NOT NULL",
+                :code => "AA"
+            })
+        end
+
+        query = PathQuery::Query.new(@model, "Employee")
+        assert_raise ArgumentError do
+            query.add_constraint({
+                :path => "name",
+                :op => "IS NOT NULL",
+                :code => "Ä"
+            })
+        end
+    end
 end
