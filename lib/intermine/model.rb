@@ -16,7 +16,7 @@ class Model
         @classes.each do |name, cld| 
             cld.fields.each do |fname, fd|
                 if fd.respond_to?(:referencedType)
-                    refCd = self.get_class(fd.referencedType)
+                    refCd = self.get_cd(fd.referencedType)
                     fd.referencedType = refCd
                 end
             end
@@ -24,12 +24,46 @@ class Model
 
     end
 
-    def get_class(cls)
+    def get_cd(cls)
         if cls.is_a?(ClassDescriptor)
             return cls
         else
             return @classes[cls]
         end
+    end
+
+    def make_new(class_name, opts={})
+        mod = get_cd(class_name).to_module
+        kls = Class.new
+        kls.class_eval do
+            include mod
+        end
+        return kls.new(opts)
+    end
+
+    def resolve_path(obj, path)
+        begin
+            parts = path.split(".")
+        rescue NoMethodError
+            parts = path.elements.map { |x| x.name }
+        end
+        root = parts.shift
+        if !obj.is_a?(get_cd(root).to_module)
+            raise ArgumentError, "Incompatible path '#{path}': #{obj} is not a #{root}"
+        end
+        begin
+            res = parts.reduce(obj) do |memo, part| 
+                args = part.split(/[\[\]]/)
+                if args.length == 2
+                    args[0] = "[]"
+                    args[1] = args[1].to_i
+                end
+                memo.send(*args) 
+            end
+        rescue NoMethodError
+            raise ArgumentError, "Incompatible path '#{path}' for #{obj}"
+        end
+        return res
     end
 
 end
@@ -73,6 +107,8 @@ class ClassDescriptor
     def initialize(opts, model)
         @model = model
         @fields = {}
+        @klass = nil
+        @module = nil
 
         field_types = {
             "attributes" => AttributeDescriptor,
@@ -105,7 +141,7 @@ class ClassDescriptor
             return true
         else
             @extends.each do |x|
-                superCls = @model.get_class(x)
+                superCls = @model.get_cd(x)
                 if superCls.subclass_of(path)
                     return true
                 end
@@ -113,7 +149,110 @@ class ClassDescriptor
         end
         return false
     end
-    
+
+    def to_module
+        if @module.nil?
+            nums = ["Float", "Double", "float", "double"]
+            ints = ["Integer", "int"]
+            bools = ["Boolean", "boolean"]
+
+            supers = @extends.map { |x| @model.get_cd(x).to_module }
+
+            klass = Module.new
+            fd_names = @fields.values.map { |x| x.name }
+            klass.class_eval do
+                include *supers
+                attr_reader *fd_names
+                define_method(:initialize) do |*args|
+                    hash = args.first || {}
+                    hash.each do |key, value|
+                        self.send(key.to_s + "=", value)
+                    end
+                end
+            end
+
+            @fields.values.each do |fd|
+                if fd.is_a?(CollectionDescriptor)
+                    klass.class_eval do
+                        define_method("add" + fd.name.capitalize) do |*vals|
+                            type = fd.referencedType
+                            instance_var = instance_variable_get("@" + fd.name)
+                            instance_var ||= []
+                            vals.each do |item|
+                                if item.is_a?(Hash)
+                                    item = type.to_class.new(item)
+                                end
+                                if !item.is_a?(type.to_module)
+                                    raise ArgumentError, "Arguments to #{fd.name} in #{@name} must be #{type.name}s"
+                                end
+                                instance_var << item
+                            end
+                            instance_variable_set("@" + fd.name, instance_var)
+                        end
+                    end
+                end
+                klass.class_eval do
+                    define_method(fd.name + "=") do |val|
+                        if fd.is_a?(AttributeDescriptor)
+                            type = fd.dataType
+                            if nums.include?(type)
+                                if !val.is_a?(Numeric)
+                                    raise ArgumentError, "Arguments to #{fd.name} in #{@name} must be numeric"
+                                end
+                            elsif ints.include?(type)
+                                if !val.is_a?(Integer)
+                                    raise ArgumentError,  "Arguments to #{fd.name} in #{@name} must be integers"
+                                end
+                            elsif bools.include?(type)
+                                if !val.is_a?(TrueClass) && !val.is_a?(FalseClass)
+                                    raise ArgumentError,   "Arguments to #{fd.name} in #{@name} must be booleans"
+                                end
+                            end
+                            instance_variable_set("@" + fd.name, val)
+                        else
+                            type = fd.referencedType
+                            if fd.is_a?(CollectionDescriptor)
+                                instance_var = []
+                                val.each do |item|
+                                    if item.is_a?(Hash)
+                                        item = type.to_class.new(item)
+                                    end
+                                    if !item.is_a?(type.to_module)
+                                        raise ArgumentError, "Arguments to #{fd.name} in #{@name} must be #{type.name}s"
+                                    end
+                                    instance_var << item
+                                end
+                                instance_variable_set("@" + fd.name, instance_var)
+                            else
+                                if val.is_a?(Hash)
+                                    val = type.to_class.new(val)
+                                end
+                                if !val.is_a?(type.to_module)
+                                    raise ArgumentError, "Arguments to #{fd.name} in #{@name} must be #{type.name}s"
+                                end
+                                instance_variable_set("@" + fd.name, val)
+                            end
+                        end
+                    end
+
+                end
+            end
+            @module = klass
+        end
+        return @module
+    end
+
+    def to_class
+        if @klass.nil?
+            mod = to_module
+            kls = Class.new
+            kls.class_eval do
+                include mod
+            end
+            @klass = kls
+        end
+        return @klass
+    end
 
 end
 
@@ -171,6 +310,22 @@ class Path
         return @elements.map {|x| x.name}.join(".")
     end
 
+    def is_attribute
+        return @elements.last.is_a(AttributeDescriptor)
+    end
+
+    def is_class
+        return @elements.last.is_a(ClassDescriptor)
+    end
+
+    def is_reference
+        return @elements.last.is_a(ReferenceDescriptor)
+    end
+
+    def is_collection
+        return @elements.last.is_a(CollectionDescriptor)
+    end
+
     private
 
     def parse(pathstring)
@@ -188,7 +343,7 @@ class Path
 
         bits = pathstring.split(".")
         rootName = bits.shift
-        @rootClass = @model.get_class(rootName)
+        @rootClass = @model.get_cd(rootName)
         if @rootClass.nil?
             raise PathException.new(pathstring, subclasses, "Invalid root class '#{rootName}'")
         end
@@ -204,7 +359,7 @@ class Path
             if fd.nil?
                 subclassKey = processed.join(".")
                 if @subclasses.has_key?(subclassKey)
-                    subclass = model.get_class(@subclasses[subclassKey])
+                    subclass = model.get_cd(@subclasses[subclassKey])
                     if subclass.nil?
                         raise PathException.new(pathstring, subclasses,
 "'#{subclassKey}' constrained to be a '#{@subclasses[subclassKey]}', but that is not a valid class in the model")

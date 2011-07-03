@@ -200,8 +200,8 @@ module PathQuery
                 raise ArgumentError, "#{self.class.name} expects sub-classes to be named as bare class names"
             end
             model = @path.model
-            cdA = model.get_class(@path.end_type)
-            cdB = model.get_class(@sub_class.end_type)
+            cdA = model.get_cd(@path.end_type)
+            cdB = model.get_cd(@sub_class.end_type)
             if !cdB.subclass_of(cdA)
                 raise ArgumentError, "The subclass in a #{self.class.name} must be a subclass of its path, but #{cdB} is not a subclass of #{cdA}"
             end
@@ -308,8 +308,8 @@ module PathQuery
                 raise ArgumentError, "loopPaths on #{self.class.name}s must be on objects or references to objects"
             end
             model = @path.model
-            cdA = model.get_class(@path.end_type)
-            cdB = model.get_class(@loopPath.end_type)
+            cdA = model.get_cd(@path.end_type)
+            cdB = model.get_cd(@loopPath.end_type)
             if !(cdA == cdB) && !cdA.subclass_of(cdB) && !cdB.subclass_of(cdA)
                 raise ArgumentError, "Incompatible types in #{self.class.name}: #{@path} -> #{cdA} and #{@loopPath} -> #{cdB}"
             end

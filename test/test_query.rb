@@ -19,10 +19,10 @@ class TestQuery < Test::Unit::TestCase
         assert(query.is_a?(PathQuery::Query))
 
         query = PathQuery::Query.new(@model, "Employee")
-        assert_equal(query.root, @model.get_class("Employee"))
+        assert_equal(query.root, @model.get_cd("Employee"))
 
         query = PathQuery::Query.new(@model, "Department.name")
-        assert_equal(query.root, @model.get_class("Department"))
+        assert_equal(query.root, @model.get_cd("Department"))
 
         assert_raise PathException do
             PathQuery::Query.new(@model, "Foo")
