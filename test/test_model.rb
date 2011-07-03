@@ -1,4 +1,4 @@
-require "test_helper"
+require File.dirname(__FILE__) + "/test_helper.rb"
 require "intermine/model"
 
 require "test/unit"
@@ -7,7 +7,8 @@ class TestModel < Test::Unit::TestCase
 
     def initialize(name)
         super
-        file = File.new("data/model.json", "r")
+        file = File.new(
+            File.dirname(__FILE__) + "/data/model.json", "r")
         data = file.read
         @model = Model.new(data)
     end

@@ -1,36 +1,82 @@
 require "rexml/document"
+require "intermine/model"
 
 module PathQuery
 
     include REXML
     class Query
-        attr_accessor :name, :model, :title, :sort_order, :views
+        attr_accessor :name, :title, :sort_order, :root
+        attr_reader :model, :joins, :constraints, :views
 
-        def to_xml
-            doc = REXML::Document.new
-            query = doc.add_element("query", {"name" => @name, "model" => @model, "title" => @title, "sort_order" => @sort_order, "view" => @views.join(" ")})
-            @joins.each { |join| query.add_element("join", join.attrs) }
-            @constraints.each { |con| query.add_element(con.to_elem) }
-            return doc
-        end
-
-        def initialize(root=nil)
-            @root = root
+        def initialize(model, root=nil)
+            @model = model
+            if root
+                @root = Path.new(root, model).rootClass
+            end
             @constraints = []
             @joins = []
             @views = []
         end
 
+        def to_xml
+            doc = REXML::Document.new
+            query = doc.add_element("query", {
+                "name" => @name, 
+                "model" => @model.name, 
+                "title" => @title, 
+                "sort_order" => @sort_order, 
+                "view" => @views.join(" ")
+            })
+            @joins.each { |join| 
+                query.add_element("join", join.attrs) 
+            }
+            @constraints.each { |con| 
+                query.add_element(con.to_elem) 
+            }
+            return doc
+        end
+
+        def add_prefix(x)
+            if @root && !x.start_with?(@root.name)
+                return @root.name + "." + x
+            else 
+                return x
+            end
+        end
+
         def add_views(*views)
-            @views << views.map { |x| x.start_with?(@root) ? x : @root + "." + x }
+            views.flatten.map do |x| 
+                y = add_prefix(x)
+                path = Path.new(y, @model, subclasses)
+                if @root.nil?
+                    @root = path.rootClass
+                end
+                @views << path
+            end
+        end
+
+        def subclasses
+            subclasses = {}
+            @constraints.each do |con|
+                if con.is_a?(SubClassConstraint)
+                    subclasses[con.path.to_s] = con.sub_class.to_s
+                end
+            end
+            return subclasses
         end
 
         def add_join(path, style="OUTER")
-            @joins << Join.new(path, style)
+            p = Path.new(add_prefix(path), @model, subclasses)
+            if @root.nil?
+                @root = p.rootClass
+            end
+            @joins << Join.new(p, style)
         end
 
         def add_constraint(parameters)
-            classes = [AttributeConstraint, SubClassConstraint, LookupConstraint, MultiValueConstraint, UnaryConstraint, LoopConstraint, ListConstraint]
+            classes = [AttributeConstraint, SubClassConstraint, 
+                LookupConstraint, MultiValueConstraint, 
+                UnaryConstraint, LoopConstraint, ListConstraint]
             attr_keys = parameters.keys
             suitable_classes = classes.select { |cls| 
                 is_suitable = true
@@ -43,19 +89,23 @@ module PathQuery
                 is_suitable
             }
             if suitable_classes.size > 1
-                raise "More than one class found for #{parameters}"
+                raise ArgumentError, "More than one class found for #{parameters}"
             elsif suitable_classes.size < 1
-                raise "No suitable classes found for #{parameters}"
+                raise ArgumentError, "No suitable classes found for #{parameters}"
             end
 
             cls = suitable_classes.first
             con = cls.new
             parameters.each_pair { |key, value|
-                if key == :path
-                    value = value.start_with?(@root) ? value : @root + "." + value
+                if key == :path || key == :loopPath
+                    value = Path.new(add_prefix(value), @model, subclasses)
+                end
+                if key == :sub_class
+                    value = Path.new(value, @model)
                 end
                 con.send(key.to_s + '=', value)
             }
+            con.validate
 
             @constraints << con
         end
@@ -64,6 +114,9 @@ module PathQuery
 
     module PathFeature
         attr_accessor :path
+
+        def validate
+        end
     end
 
     module Coded
@@ -91,6 +144,23 @@ module PathQuery
             elem.add_attributes(attributes)
             return elem
         end
+
+        def validate 
+            if @path.elements.last.is_a?(AttributeDescriptor)
+                raise ArgumentError, "#{self.class.name}s must be on objects or references to objects"
+            end
+            if @sub_class.length > 1
+                raise ArgumentError, "#{self.class.name} expects sub-classes to be named as bare class names"
+            end
+            model = @path.model
+            cdA = model.get_class(@path.end_type)
+            cdB = model.get_class(@sub_class.end_type)
+            if !cdB.subclass_of(cdA)
+                raise ArgumentError, "The subclass in a #{self.class.name} must be a subclass of its path, but #{cdB} is not a subclass of #{cdA}"
+            end
+
+        end
+
     end
 
     class AttributeConstraint
@@ -109,10 +179,45 @@ module PathQuery
             elem.add_attributes(attributes)
             return elem
         end
+
+        def validate
+            if !@path.elements.last.is_a?(AttributeDescriptor)
+                raise ArgumentError, "Attribute constraints must be on attributes"
+            end
+            nums = ["Float", "Double", "float", "double"]
+            ints = ["Integer", "int"]
+            bools = ["Boolean", "boolean"]
+            dataType = @path.elements.last.dataType.split(".").last
+            if nums.include?(dataType)
+                if !@value.is_a?(Numeric)
+                    raise ArgumentError, "value #{@value} is not numeric for #{@path}"
+                end
+            end
+            if ints.include?(dataType)
+                if !@value.is_a?(Integer)
+                    raise ArgumentError, "value #{@value} is not an integer for #{@path}"
+                end
+            end
+            if bools.include?(dataType)
+                if !@value.is_a?(TrueClass) && !@value.is_a?(FalseClass)
+                    raise ArgumentError, "value #{@value} is not a boolean value for #{@path}"
+                end
+            end
+        end
+
+    end
+
+    module ObjectConstraint
+        def validate
+            if @path.elements.last.is_a?(AttributeDescriptor)
+                raise ArgumentError, "#{self.class.name}s must be on objects or references to objects"
+            end
+        end
     end
 
     class ListConstraint < AttributeConstraint
         @valid_ops = ["IN", "NOT IN"]
+        include ObjectConstraint
     end
 
     class LoopConstraint
@@ -135,6 +240,22 @@ module PathQuery
             elem.add_attributes(attributes)
             return elem
         end
+
+        def validate
+            if @path.elements.last.is_a?(AttributeDescriptor)
+                raise ArgumentError, "#{self.class.name}s must be on objects or references to objects"
+            end
+            if @loopPath.elements.last.is_a?(AttributeDescriptor)
+                raise ArgumentError, "loopPaths on #{self.class.name}s must be on objects or references to objects"
+            end
+            model = @path.model
+            cdA = model.get_class(@path.end_type)
+            cdB = model.get_class(@loopPath.end_type)
+            if !(cdA == cdB) && !cdA.subclass_of(cdB) && !cdB.subclass_of(cdA)
+                raise ArgumentError, "Incompatible types in #{self.class.name}: #{@path} -> #{cdA} and #{@loopPath} -> #{cdB}"
+            end
+        end
+
     end
 
     class UnaryConstraint
@@ -153,7 +274,7 @@ module PathQuery
         end
     end
 
-    class LookupConstraint < AttributeConstraint
+    class LookupConstraint < ListConstraint
         @valid_ops = ["LOOKUP"]
         attr_accessor :extra_value
 
@@ -164,6 +285,7 @@ module PathQuery
             end
             return elem
         end
+
     end
 
     class MultiValueConstraint 
@@ -192,7 +314,7 @@ module PathQuery
 
         def initialize(path, style)
             unless Join.valid_styles.include?(style)
-                raise "Invalid style: #{style}"
+                raise ArgumentError, "Invalid style: #{style}"
             end
             self.path = path
             self.style = style
