@@ -32,13 +32,18 @@ class Model
         end
     end
 
-    def make_new(class_name, opts={})
-        mod = get_cd(class_name).to_module
-        kls = Class.new
-        kls.class_eval do
-            include mod
+    def make_new(class_name=nil, opts={})
+        # Support calling with just opts
+        if class_name.is_a?(Hash)
+            opts = class_name
+            class_name = nil
         end
-        return kls.new(opts)
+        if class_name && opts["class"] && (class_name != opts["class"]) && !get_cd(opts["class"]).subclass_of(class_name)
+            raise ArgumentError, "class name in options hash is not compatible with passed class name: #{opts["class"]} is not a subclass of #{class_name}"
+        end
+        # Prefer the options value to the passed value
+        cd_name = opts["class"] || class_name
+        return get_cd(cd_name).to_class.new(opts)
     end
 
     def resolve_path(obj, path)
@@ -66,6 +71,32 @@ class Model
         return res
     end
 
+end
+
+class InterMineObject
+    attr_reader :objectId
+    def initialize(hash=nil)
+        hash ||= {}
+        hash.each do |key, value|
+            if key.to_s != "class"
+                self.send(key.to_s + "=", value)
+            end
+        end
+    end
+
+    def is_a?(other)
+        if other.is_a?(ClassDescriptor)
+            return is_a?(other.to_module)
+        else
+            return super
+        end
+    end
+
+    private 
+    
+    def objectId=(val)
+        @objectId = val
+    end
 end
 
 module SetHashKey 
@@ -163,12 +194,6 @@ class ClassDescriptor
             klass.class_eval do
                 include *supers
                 attr_reader *fd_names
-                define_method(:initialize) do |*args|
-                    hash = args.first || {}
-                    hash.each do |key, value|
-                        self.send(key.to_s + "=", value)
-                    end
-                end
             end
 
             @fields.values.each do |fd|
@@ -180,9 +205,9 @@ class ClassDescriptor
                             instance_var ||= []
                             vals.each do |item|
                                 if item.is_a?(Hash)
-                                    item = type.to_class.new(item)
+                                    item = type.model.make_new(type.name, item)
                                 end
-                                if !item.is_a?(type.to_module)
+                                if !item.is_a?(type)
                                     raise ArgumentError, "Arguments to #{fd.name} in #{@name} must be #{type.name}s"
                                 end
                                 instance_var << item
@@ -215,9 +240,9 @@ class ClassDescriptor
                                 instance_var = []
                                 val.each do |item|
                                     if item.is_a?(Hash)
-                                        item = type.to_class.new(item)
+                                        item = type.model.make_new(type.name, item)
                                     end
-                                    if !item.is_a?(type.to_module)
+                                    if !item.is_a?(type)
                                         raise ArgumentError, "Arguments to #{fd.name} in #{@name} must be #{type.name}s"
                                     end
                                     instance_var << item
@@ -225,9 +250,9 @@ class ClassDescriptor
                                 instance_variable_set("@" + fd.name, instance_var)
                             else
                                 if val.is_a?(Hash)
-                                    val = type.to_class.new(val)
+                                    val = type.model.make_new(type.name, val)
                                 end
-                                if !val.is_a?(type.to_module)
+                                if !val.is_a?(type)
                                     raise ArgumentError, "Arguments to #{fd.name} in #{@name} must be #{type.name}s"
                                 end
                                 instance_variable_set("@" + fd.name, val)
@@ -245,7 +270,7 @@ class ClassDescriptor
     def to_class
         if @klass.nil?
             mod = to_module
-            kls = Class.new
+            kls = Class.new(InterMineObject)
             kls.class_eval do
                 include mod
             end
@@ -300,6 +325,10 @@ class Path
         else
             return last.dataType
         end
+    end
+
+    def ==(other)
+        return self.to_s == other.to_s
     end
 
     def length

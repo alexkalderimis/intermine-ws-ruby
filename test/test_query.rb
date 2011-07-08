@@ -735,4 +735,114 @@ class TestQuery < Test::Unit::TestCase
             })
         end
     end
+
+    def test_sort_order 
+
+        query =  PathQuery::Query.new(@model, "Employee")
+
+        query.add_views("name", "age", "end")
+
+        query.add_sort_order("name", "ASC")
+
+        assert_equal(query.sort_order.first.path, "Employee.name")
+        assert_equal(query.sort_order.first.direction, "ASC")
+
+        query.add_sort_order("age")
+
+        assert_equal(query.sort_order.last.path, "Employee.age")
+        assert_equal(query.sort_order.last.direction, "ASC")
+
+        query.add_sort_order("end", "DESC")
+
+        assert_equal(query.sort_order.last.path, "Employee.end")
+        assert_equal(query.sort_order.last.direction, "DESC")
+
+        assert_raise PathException do
+            query.add_sort_order("foo")
+        end
+
+        assert_raise ArgumentError do
+            query.add_sort_order("name", "FORWARDS")
+        end
+
+        assert_raise ArgumentError do
+            query.add_sort_order("department.name")
+        end
+
+        query.add_sort_order("name", "desc")
+
+        assert_equal(query.sort_order.last.path, "Employee.name")
+        assert_equal(query.sort_order.last.direction, "DESC")
+    end
+
+    def test_logic 
+
+        query = PathQuery::Query.new(@model, "Employee")
+
+        5.times do
+            query.add_constraint(:path => "name", :op => "=", :value => "foo")
+        end
+
+        query.set_logic("A and B and C and D and E")
+        assert_equal("A and B and C and D and E", query.logic.to_s)
+
+        query.set_logic("A&B&C&D&E")
+        assert_equal("A and B and C and D and E", query.logic.to_s)
+
+        query.set_logic("A|B|C|D|E")
+        assert_equal("A or B or C or D or E", query.logic.to_s)
+
+        query.set_logic("A and B or C and D or E")
+        assert_equal("A and (B or C) and (D or E)", query.logic.to_s)
+
+        query.set_logic("A and (B or (C and (D or E)))")
+        assert_equal("A and (B or (C and (D or E)))", query.logic.to_s)
+
+        query.set_logic("(((A and B) and C) and D) and E")
+        assert_equal("A and B and C and D and E", query.logic.to_s)
+
+        query.set_logic("A and B | (C or D) and E")
+        assert_equal("A and (B or C or D) and E", query.logic.to_s)
+
+        query.set_logic("A or B or (C and D) and E")
+        assert_equal("(A or B or (C and D)) and E", query.logic.to_s)
+
+        query.set_logic("A or B or (C and D and E)")
+        assert_equal("A or B or (C and D and E)", query.logic.to_s)
+
+        assert_raise PathQuery::LogicParseError do
+            query.set_logic("A B | (C or D) and E")
+        end
+
+        assert_raise PathQuery::LogicParseError do
+            query.set_logic("A ( B and C)")
+        end
+
+        assert_raise PathQuery::LogicParseError do
+            query.set_logic("A or B and C)")
+        end
+
+        assert_raise PathQuery::LogicParseError do
+            query.set_logic("A or (B and C")
+        end
+    end
+
+
+    def test_query_element_xml
+
+        query =  PathQuery::Query.new(@model, "Employee")
+        query.add_views("name", "age", "fullTime", "department.name")
+        
+        expected = "<query model='testmodel' view='Employee.name Employee.age Employee.fullTime Employee.department.name' sortOrder='Employee.name ASC'/>"
+
+        assert_equal(expected, query.to_xml.to_s)
+
+        query.title = "Ruby Query"
+        query.add_sort_order("age", "desc")
+
+        expected = "<query model='testmodel' title='Ruby Query' view='Employee.name Employee.age Employee.fullTime Employee.department.name' sortOrder='Employee.age DESC'/>"
+        assert_equal(expected, query.to_xml.to_s)
+
+    end
+
 end

@@ -227,6 +227,82 @@ class TestModel < Test::Unit::TestCase
         end
     end
 
+    def test_creation_from_hash_alone
+
+        emp = @model.make_new({
+            "class" => "Employee",
+            "name" => "John Doe",
+            "age" => 25
+        })
+
+        assert_kind_of(@model.get_cd("Employee").to_module, emp)
+        assert_equal(emp.name, "John Doe")
+        assert_equal(emp.age, 25)
+    end
+
+    def test_prefer_hash_class
+
+        emp = @model.make_new("Employee", {
+            "class" => "Manager",
+            "name" => "John Doe",
+            "age" => 25
+        })
+
+        assert_kind_of(@model.get_cd("Employee").to_module, emp)
+        assert_kind_of(@model.get_cd("Manager").to_module, emp)
+        assert_equal(emp.name, "John Doe")
+        assert_equal(emp.age, 25)
+    end
+
+    def test_subclass_coercion
+
+        dep = @model.make_new("Department")
+
+        dep.addEmployees(
+            { "name" => "A" },
+            { "class" => "Manager", "name" => "B" },
+            { "class" => "CEO", "name" => "C" }
+        )
+
+        assert_equal(dep.employees[0].name, "A")
+        assert_equal(dep.employees[1].name, "B")
+        assert_equal(dep.employees[2].name, "C")
+
+        dep.employees.each do |emp|
+            assert_kind_of(@model.get_cd("Employee").to_module, emp)
+        end
+
+        dep.employees.drop(1).each do |manager|
+            assert_kind_of(@model.get_cd("Manager").to_module, manager)
+        end
+
+        assert_kind_of(@model.get_cd("Manager").to_module, dep.employees.last)
+    end
+
+    def test_overridden_isa
+
+        manager = @model.make_new("Manager")
+
+        assert(manager.is_a?(@model.get_cd("Employee")))
+    end
+
+    def test_refuse_to_make_objects_with_conflicting_class_names
+
+        assert_raise ArgumentError do
+            @model.make_new("Employee", { "class" => "Company", "name" => "Aperture Science" })
+        end
+    end
+
+    def test_item_ids
+
+        dep = @model.make_new("Department", {
+            "name" => "Sales",
+            "objectId" => 12345
+        })
+
+        assert_equal(dep.objectId, 12345)
+    end
+
     def test_item_creation_problems
 
         emp_kls = @model.get_cd("Employee").to_class

@@ -5,8 +5,8 @@ module PathQuery
 
     include REXML
     class Query
-        attr_accessor :name, :title, :sort_order, :root
-        attr_reader :model, :joins, :constraints, :views
+        attr_accessor :name, :title, :root
+        attr_reader :model, :joins, :constraints, :views, :sort_order, :logic
 
         def initialize(model, root=nil)
             @model = model
@@ -16,18 +16,27 @@ module PathQuery
             @constraints = []
             @joins = []
             @views = []
+            @sort_order = []
             @used_codes = []
+            @logic_parser = LogicParser.new(self)
         end
 
         def to_xml
             doc = REXML::Document.new
+
+            if @sort_order.empty?
+                so = SortOrder.new(@views.first, "ASC")
+            else
+                so = @sort_order
+            end
+
             query = doc.add_element("query", {
                 "name" => @name, 
                 "model" => @model.name, 
                 "title" => @title, 
-                "sort_order" => @sort_order, 
+                "sortOrder" => so,
                 "view" => @views.join(" ")
-            })
+            }.delete_if { |k, v | !v })
             @joins.each { |join| 
                 query.add_element("join", join.attrs) 
             }
@@ -43,6 +52,15 @@ module PathQuery
             else 
                 return x
             end
+        end
+        
+        def get_constraint(code)
+            @constraints.each do |x|
+                if x.code == code
+                    return x
+                end
+            end
+            raise ArgumentError, "#{code} not in query"
         end
 
         def add_views(*views)
@@ -72,6 +90,14 @@ module PathQuery
                 @root = p.rootClass
             end
             @joins << Join.new(p, style)
+        end
+
+        def add_sort_order(path, direction="ASC") 
+            p = Path.new(add_prefix(path), @model, subclasses)
+            if !@views.include? p
+                raise ArgumentError, "Sort order (#{p}) not in view"
+            end
+            @sort_order << SortOrder.new(p, direction)
         end
 
         def add_constraint(parameters)
@@ -125,6 +151,14 @@ module PathQuery
             end
 
             @constraints << con
+        end
+
+        def set_logic(value)
+            if value.is_a?(LogicGroup)
+                @logic = value
+            else
+                @logic = @logic_parser.parse_logic(value)
+            end
         end
 
         private 
@@ -373,6 +407,26 @@ module PathQuery
         end
     end
 
+    class SortOrder 
+        include PathFeature
+        attr_accessor :direction
+        class << self;  attr_accessor :valid_directions end
+        @valid_directions = %w{ASC DESC}
+
+        def initialize(path, direction) 
+            direction.upcase!
+            unless SortOrder.valid_directions.include? direction
+                raise ArgumentError, "Illegal sort direction: #{direction}"
+            end
+            self.path = path
+            self.direction = direction
+        end
+
+        def to_s
+            return @path.to_s + " " + @direction
+        end
+    end
+
     class Join 
         include PathFeature
         attr_accessor :style
@@ -394,5 +448,191 @@ module PathQuery
             }
             return attributes
         end
+    end
+
+    class LogicNode
+    end
+
+    class LogicGroup < LogicNode
+
+        attr_reader :left, :right, :op
+        attr_accessor :parent
+
+        def initialize(left, op, right, parent=nil)
+            if !["AND", "OR"].include?(op)
+                raise ArgumentError, "#{op} is not a legal logical operator"
+            end
+            @parent = parent
+            @left = left
+            @op = op
+            @right = right
+            [left, right].each do |node|
+                if node.is_a?(LogicGroup)
+                    node.parent = self
+                end
+            end
+        end
+
+        def to_s
+            core = [@left.code, @op.downcase, @right.code].join(" ")
+            if @parent && @op != @parent.op
+                return "(#{core})"
+            else
+                return core
+            end
+        end
+
+        def code
+            return to_s
+        end
+
+    end
+
+    class LogicParseError < ArgumentError
+    end
+
+    class LogicParser
+
+        class << self;  attr_accessor :precedence, :ops end
+        @precedence = {
+            "AND" => 2,
+            "OR"  => 1,
+            "("   => 3, 
+            ")"   => 3
+        }
+
+        @ops = {
+            "AND" => "AND",
+            "&"   => "AND",
+            "&&"  => "AND",
+            "OR"  => "OR",
+            "|"   => "OR",
+            "||"  => "OR",
+            "("   => "(",
+            ")"   => ")"
+        }
+
+        def initialize(query)
+            @query = query
+        end
+
+        def parse_logic(str)
+            tokens = str.upcase.split(/(?:\s+|\b)/).map do |x| 
+                LogicParser.ops.fetch(x, x.split(//))
+            end
+            tokens.flatten!
+
+            check_syntax(tokens)
+            postfix_tokens = infix_to_postfix(tokens)
+            ast = postfix_to_tree(postfix_tokens)
+            return ast
+        end
+
+        private
+
+        def infix_to_postfix(tokens)
+            stack = []
+            postfix_tokens = []
+            tokens.each do |x|
+                if !LogicParser.ops.include?(x)
+                    postfix_tokens << x
+                else
+                    case x
+                    when "("
+                        stack << x
+                    when ")"
+                        while !stack.empty?
+                            last_op = stack.pop
+                            if last_op == "("
+                                if !stack.empty?
+                                    previous_op = stack.pop
+                                    if previous_op != "("
+                                        postfix_tokens << previous_op
+                                        break
+                                    end
+                                end
+                            else 
+                                postfix_tokens << last_op
+                            end
+                        end
+                    else
+                        while !stack.empty? and LogicParser.precedence[stack.last] <= LogicParser.precedence[x]
+                            prev_op = stack.pop
+                            if prev_op != "("
+                                postfix_tokens << prev_op
+                            end
+                        end
+                        stack << x
+                    end
+                end
+            end
+            while !stack.empty?
+                postfix_tokens << stack.pop
+            end
+            return postfix_tokens
+        end
+
+        def check_syntax(tokens)
+            need_op = false
+            need_bin_op_or_bracket = false
+            processed = []
+            open_brackets = 0
+            tokens.each do |x|
+                if !LogicParser.ops.include?(x)
+                    if need_op
+                        raise LogicParseError, "Expected an operator after '#{processed.join(' ')}', but got #{x}"
+                    elsif need_bin_op_or_bracket
+                        raise LogicParseError, "Logic grouping error after '#{processed.join(' ')}', expected an operator or closing bracket, but got #{x}"
+                    end
+                    need_op = true
+                else
+                    need_op = false
+                    case x
+                    when "("
+                        if !processed.empty? && !LogicParser.ops.include?(processed.last)
+                            raise LogicParseError, "Logic grouping error after '#{processed.join(' ')}', got #{x}"
+                        elsif need_bin_op_or_bracket
+                            raise LogicParseError, "Logic grouping error after '#{processed.join(' ')}', got #{x}"
+                        end
+                        open_brackets += 1
+                    when ")"
+                        need_bin_op_or_bracket = true
+                        open_brackets -= 1
+                    else
+                        need_bin_op_or_bracket = false
+                    end
+                end
+                processed << x
+            end
+            if open_brackets < 0
+                raise LogicParseError, "Unmatched closing bracket in #{tokens.join(' ')}"
+            elsif open_brackets > 0
+                raise LogicParseError, "Unmatched opening bracket in #{tokens.join(' ')}"
+            end
+        end
+
+        def postfix_to_tree(tokens)
+            stack = []
+            tokens.each do |x|
+                if !LogicParser.ops.include?(x)
+                    stack << x
+                else
+                    right = stack.pop
+                    left = stack.pop
+                    right = (right.is_a?(LogicGroup)) ? right : @query.get_constraint(right)
+                    left = (left.is_a?(LogicGroup)) ? left : @query.get_constraint(left)
+                    stack << LogicGroup.new(left, x, right)
+                end
+            end
+            if stack.size != 1
+                raise LogicParseError, "Tree does not have a unique root"
+            end
+            return stack.pop
+        end
+
+        def precedence_of(op)
+            return LogicParser.precedence[op]
+        end
+
     end
 end
