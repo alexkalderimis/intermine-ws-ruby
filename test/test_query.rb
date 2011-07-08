@@ -845,4 +845,61 @@ class TestQuery < Test::Unit::TestCase
 
     end
 
+    def test_constraint_xml
+        query =  PathQuery::Query.new(@model, "Employee")
+        query.add_views("name", "age", "fullTime", "department.name")
+
+        query.add_constraint({:path => "department", :op => "IS NOT NULL"})
+        query.add_constraint({
+            :path => "name", 
+            :op => "<", 
+            :value => "foo"
+        })
+        query.add_constraint({
+            :path => "age",
+            :op => "ONE OF",
+            :values => [17, 23, 37]
+        })
+        query.add_constraint({
+            :path => "Employee",
+            :op => "IN",
+            :value => "bar"
+        })
+        query.add_constraint({
+            :path => "Employee",
+            :op => "IS",
+            :loopPath => "department.manager"
+        })
+        query.add_constraint({
+            :path => "Employee",
+            :op => "LOOKUP",
+            :value => "quux"
+        })
+        query.add_constraint({
+            :path => "Employee",
+            :op => "LOOKUP",
+            :value => "zop",
+            :extra_value => "zip"
+        })
+        query.add_constraint({
+            :path => "Employee",
+            :sub_class => "Manager"
+        })
+
+        expected = "<query model='testmodel' view='Employee.name Employee.age Employee.fullTime Employee.department.name' sortOrder='Employee.name ASC'>" + 
+        "<constraint type='Manager' path='Employee'/>" + 
+        "<constraint op='IS NOT NULL' code='A' path='Employee.department'/>" + 
+        "<constraint op='&lt;' code='B' value='foo' path='Employee.name'/>" + 
+        "<constraint op='ONE OF' code='C' path='Employee.age'>" + 
+            "<value>17</value><value>23</value><value>37</value>" +
+        "</constraint>" + 
+        "<constraint op='IN' code='D' value='bar' path='Employee'/>" + 
+        "<constraint loopPath='Employee.department.manager' op='=' code='E' path='Employee'/>" +
+        "<constraint op='LOOKUP' code='F' value='quux' path='Employee'/>" + 
+        "<constraint extraValue='zip' op='LOOKUP' code='G' value='zop' path='Employee'/>" + 
+        "</query>"
+
+        assert_equal(expected, query.to_xml.to_s)
+    end
+
 end

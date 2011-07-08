@@ -40,7 +40,10 @@ module PathQuery
             @joins.each { |join| 
                 query.add_element("join", join.attrs) 
             }
-            @constraints.each { |con| 
+            @constraints.select {|x| x.is_a?(SubClassConstraint)}.each { |con|
+                query.add_element(con.to_elem) 
+            }
+            @constraints.select {|x| !x.is_a?(SubClassConstraint)}.each { |con|
                 query.add_element(con.to_elem) 
             }
             return doc
@@ -211,11 +214,23 @@ module PathQuery
                 return @valid_ops
             end
         end
+
+        def to_elem
+            attributes = {
+                "path" => @path,
+                "op" => @op,
+                "code" => @code
+            }.delete_if {|k,v| !v}
+            elem = REXML::Element.new("constraint")
+            elem.add_attributes(attributes)
+            return elem
+        end
     end
 
     class SubClassConstraint
         include PathFeature
         attr_accessor :sub_class
+
         def to_elem
             attributes = {
                 "path" => @path,
@@ -290,12 +305,8 @@ module PathQuery
         attr_accessor :value
 
         def to_elem
-            attributes = {
-                "path" => @path,
-                "op" => @op,
-                "value" => @value
-            }
-            elem = REXML::Element.new("constraint")
+            elem = super
+            attributes = {"value" => @value}
             elem.add_attributes(attributes)
             return elem
         end
@@ -324,13 +335,9 @@ module PathQuery
         end
 
         def to_elem
-            attributes = {
-                "path" => @path,
-                "op" => LoopConstraint.xml_ops[@op],
-                "loopPath" => @loopPath
-            }
-            elem = REXML::Element.new("constraint")
-            elem.add_attributes(attributes)
+            elem = super
+            elem.add_attribute("op", LoopConstraint.xml_ops[@op])
+            elem.add_attribute("loopPath", @loopPath)
             return elem
         end
 
@@ -356,15 +363,6 @@ module PathQuery
         include Coded
         @valid_ops = ["IS NULL", "IS NOT NULL"]
 
-        def to_elem
-            attributes = {
-                "path" => @path,
-                "op" => @op,
-            }
-            elem = REXML::Element.new("constraint")
-            elem.add_attributes(attributes)
-            return elem
-        end
     end
 
     class LookupConstraint < ListConstraint
@@ -389,11 +387,10 @@ module PathQuery
 
         attr_accessor :values
         def to_elem 
-            elem = REXML::Element.new("constraint")
-            elem.add_attributes({"path" => @path, "op" => @op})
+            elem = super
             @values.each { |x|
                 value = REXML::Element.new("value")
-                value.add_text(x)
+                value.add_text(x.to_s)
                 elem.add_element(value)
             }
             return elem
