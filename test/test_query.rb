@@ -199,6 +199,22 @@ class TestQuery < Test::Unit::TestCase
         assert_equal(join.style, "INNER")
     end
 
+    def test_subclassed_joins
+
+        query = PathQuery::Query.new(@model, "Department")
+
+        query.add_constraint({:path => "employees", :sub_class => "CEO"})
+        query.add_join("employees.secretarys")
+
+        assert_equal(query.joins.first.path.to_s, "Department.employees.secretarys")
+        assert_equal(query.joins.first.style, "OUTER")
+
+        query = PathQuery::Query.new(@model, "Department")
+        assert_raise PathException do
+            query.add_join("employees.secretarys")
+        end
+    end
+
     def test_join_problems
 
         query = PathQuery::Query.new(@model)
@@ -736,6 +752,24 @@ class TestQuery < Test::Unit::TestCase
         end
     end
 
+    def test_subclassed_constraints
+
+        query =  PathQuery::Query.new(@model, "Department")
+
+        query.add_constraint({:path => "employees", :sub_class => "Manager"})
+        query.add_constraint({:path => "employees.title", :op => "=", :value => "Ms"})
+
+        assert_equal(query.constraints.last.path.to_s, "Department.employees.title")
+        assert_equal(query.constraints.last.op, "=")
+        assert_equal(query.constraints.last.value, "Ms")
+        assert_equal(query.constraints.last.code, "A")
+
+        query =  PathQuery::Query.new(@model, "Department")
+        assert_raise PathException do
+            query.add_constraint({:path => "employees.title", :op => "=", :value => "Ms"})
+        end
+    end
+
     def test_sort_order 
 
         query =  PathQuery::Query.new(@model, "Employee")
@@ -773,6 +807,22 @@ class TestQuery < Test::Unit::TestCase
 
         assert_equal(query.sort_order.last.path, "Employee.name")
         assert_equal(query.sort_order.last.direction, "DESC")
+    end
+
+    def test_subclassed_sort_order
+
+        query = PathQuery::Query.new(@model, "Employee")
+
+        query.add_constraint(:path => "Employee", :sub_class => "Manager")
+        query.add_views(%w{name age fullTime title})
+        query.add_sort_order("title")
+
+        assert_equal(query.sort_order.first.path, "Employee.title")
+        
+        query = PathQuery::Query.new(@model, "Employee")
+        assert_raise PathException do
+            query.add_sort_order("title")
+        end
     end
 
     def test_logic 
@@ -827,7 +877,6 @@ class TestQuery < Test::Unit::TestCase
         end
     end
 
-
     def test_query_element_xml
 
         query =  PathQuery::Query.new(@model, "Employee")
@@ -841,6 +890,10 @@ class TestQuery < Test::Unit::TestCase
         query.add_sort_order("age", "desc")
 
         expected = "<query model='testmodel' title='Ruby Query' view='Employee.name Employee.age Employee.fullTime Employee.department.name' sortOrder='Employee.age DESC'/>"
+        assert_equal(expected, query.to_xml.to_s)
+
+        query.add_sort_order("name")
+        expected = "<query model='testmodel' title='Ruby Query' view='Employee.name Employee.age Employee.fullTime Employee.department.name' sortOrder='Employee.age DESC Employee.name ASC'/>"
         assert_equal(expected, query.to_xml.to_s)
 
     end
@@ -885,8 +938,9 @@ class TestQuery < Test::Unit::TestCase
             :path => "Employee",
             :sub_class => "Manager"
         })
+        query.add_views("title")
 
-        expected = "<query model='testmodel' view='Employee.name Employee.age Employee.fullTime Employee.department.name' sortOrder='Employee.name ASC'>" + 
+        expected = "<query model='testmodel' view='Employee.name Employee.age Employee.fullTime Employee.department.name Employee.title' sortOrder='Employee.name ASC'>" + 
         "<constraint type='Manager' path='Employee'/>" + 
         "<constraint op='IS NOT NULL' code='A' path='Employee.department'/>" + 
         "<constraint op='&lt;' code='B' value='foo' path='Employee.name'/>" + 
@@ -902,4 +956,88 @@ class TestQuery < Test::Unit::TestCase
         assert_equal(expected, query.to_xml.to_s)
     end
 
+    def test_join_xml
+
+        query =  PathQuery::Query.new(@model, "Employee")
+        query.add_views("name", "age", "fullTime", "department.name")
+
+        query.add_join("department")
+        query.add_join("department.company", "INNER")
+        query.add_join("department.company.address", "OUTER")
+
+        expected = "<query model='testmodel' view='Employee.name Employee.age Employee.fullTime Employee.department.name' sortOrder='Employee.name ASC'>" + 
+            "<join path='Employee.department' style='OUTER'/>" +
+            "<join path='Employee.department.company' style='INNER'/>" +
+            "<join path='Employee.department.company.address' style='OUTER'/>" +
+            "</query>"
+
+        assert_equal(expected, query.to_xml.to_s)
+    end
+
+    def test_all_xml
+        query =  PathQuery::Query.new(@model, "Employee")
+        query.add_views("name", "age", "fullTime", "department.name")
+        query.add_constraint({
+            :path => "Employee",
+            :sub_class => "Manager"
+        })
+        query.add_views("title")
+        query.add_sort_order("title", "desc")
+
+        query.add_join("department")
+        query.add_join("department.company", "INNER")
+        query.add_join("department.company.address", "OUTER")
+
+        query.add_constraint({:path => "department", :op => "IS NOT NULL"})
+        query.add_constraint({
+            :path => "name", 
+            :op => "<", 
+            :value => "foo"
+        })
+        query.add_constraint({
+            :path => "age",
+            :op => "ONE OF",
+            :values => [17, 23, 37]
+        })
+        query.add_constraint({
+            :path => "Employee",
+            :op => "IN",
+            :value => "bar"
+        })
+        query.add_constraint({
+            :path => "Employee",
+            :op => "IS",
+            :loopPath => "department.manager"
+        })
+        query.add_constraint({
+            :path => "Employee",
+            :op => "LOOKUP",
+            :value => "quux"
+        })
+        query.add_constraint({
+            :path => "Employee",
+            :op => "LOOKUP",
+            :value => "zop",
+            :extra_value => "zip"
+        })
+
+        expected = "<query model='testmodel' view='Employee.name Employee.age Employee.fullTime Employee.department.name Employee.title' sortOrder='Employee.title DESC'>" + 
+            "<join path='Employee.department' style='OUTER'/>" +
+            "<join path='Employee.department.company' style='INNER'/>" +
+            "<join path='Employee.department.company.address' style='OUTER'/>" +
+            "<constraint type='Manager' path='Employee'/>" + 
+            "<constraint op='IS NOT NULL' code='A' path='Employee.department'/>" + 
+            "<constraint op='&lt;' code='B' value='foo' path='Employee.name'/>" + 
+            "<constraint op='ONE OF' code='C' path='Employee.age'>" + 
+                "<value>17</value><value>23</value><value>37</value>" +
+            "</constraint>" + 
+            "<constraint op='IN' code='D' value='bar' path='Employee'/>" + 
+            "<constraint loopPath='Employee.department.manager' op='=' code='E' path='Employee'/>" +
+            "<constraint op='LOOKUP' code='F' value='quux' path='Employee'/>" + 
+            "<constraint extraValue='zip' op='LOOKUP' code='G' value='zop' path='Employee'/>" + 
+        "</query>"
+
+        assert_equal(expected, query.to_xml.to_s)
+
+    end
 end

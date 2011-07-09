@@ -27,7 +27,7 @@ module PathQuery
             if @sort_order.empty?
                 so = SortOrder.new(@views.first, "ASC")
             else
-                so = @sort_order
+                so = @sort_order.join(" ")
             end
 
             query = doc.add_element("query", {
