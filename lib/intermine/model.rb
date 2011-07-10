@@ -339,6 +339,10 @@ class Path
         return @elements.map {|x| x.name}.join(".")
     end
 
+    def to_headless_s
+        return @elements[1, @elements.size - 1].map {|x| x.name}.join(".")
+    end
+
     def is_attribute
         return @elements.last.is_a(AttributeDescriptor)
     end

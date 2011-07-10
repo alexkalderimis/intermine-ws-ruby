@@ -1,5 +1,6 @@
 require "rexml/document"
 require "intermine/model"
+require "intermine/results"
 
 module PathQuery
 
@@ -8,8 +9,9 @@ module PathQuery
         attr_accessor :name, :title, :root
         attr_reader :model, :joins, :constraints, :views, :sort_order, :logic
 
-        def initialize(model, root=nil)
+        def initialize(model, root=nil, service=nil)
             @model = model
+            @service = service
             if root
                 @root = Path.new(root, model).rootClass
             end
@@ -47,6 +49,26 @@ module PathQuery
                 query.add_element(con.to_elem) 
             }
             return doc
+        end
+
+        def each_row
+            url = @service.root + Service::QUERY_RESULTS_PATH
+            params = {"query" => self.to_xml, "format" => "jsonrows"}
+            rr = Results::ResultsReader.new(url, params, self.views)
+            rr.each_row {|row|
+                yield row
+            }
+        end
+
+        def results
+            url = @service.root + Service::QUERY_RESULTS_PATH
+            params = {"query" => self.to_xml, "format" => "jsonrows"}
+            rr = Results::ResultsReader.new(url, params, self.views)
+            res = []
+            rr.each_row {|row|
+                res << row
+            }
+            res
         end
 
         def add_prefix(x)

@@ -1,5 +1,9 @@
 require 'rubygems'
 require "json"
+require 'stringio'
+require 'net/http'
+require 'addressable/uri'
+require 'rest-open-uri'
 
 module Results
 
@@ -41,10 +45,26 @@ module Results
         def to_h
             hash = {}
             @results.each_index do |x|
-                key = @columns[x]
-                hash[key] = self[key]
+                key = @columns[x].to_s
+                hash[key] = self[x]
             end
             return hash
+        end
+
+        def to_s 
+            bufs = []
+            @results.each_index do |idx|
+                buffer = ""
+                buffer << @columns[idx].to_headless_s
+                buffer << "="
+                buffer << self[idx].to_s
+                bufs << buffer
+            end
+            return @columns.first.rootClass.name + ": " + bufs.join(",\t")
+        end
+
+        def to_csv
+            return @results.map {|x| x["value"].to_s}.join("\t")
         end
 
         private
@@ -54,11 +74,93 @@ module Results
                 @indexes = {}
                 @results.each_index do |idx|
                     idx_key = @columns[idx]
-                    @indexes[idx_key] = idx
+                    @indexes[idx_key.to_s] = idx
+
+                    ## Include root-less paths as aliases
+                    # But allow for string columns
+                    if idx_key.respond_to?(:to_headless_s)
+                        @indexes[idx_key.to_headless_s] = idx
+                    end
                 end
             end
             return @indexes[key]
         end
     end
+
+
+    class ResultsReader
+
+        def initialize(uri, params, view)
+            @uri = URI(uri)
+            @http = Net::HTTP.new(@uri.host, @uri.port)
+            @params = params
+            @view = view
+        end
+
+        def get_each_line
+            buffer = StringIO.new
+            last = 0
+            current = nil
+            @http.request_get(@uri.path) do |res|
+                res.read_body do |chunk|
+                buffer << chunk
+                current = buffer.pos
+                buffer.seek(last)
+                while buffer.pos < current
+                    yield buffer.readline
+                end
+                last = buffer.pos
+                buffer.seek(current)
+                end
+            end
+        end
+
+        def get_query_string
+            bits = []
+            @params.each do |k, v|
+                if v.is_a?(Array)
+                    v.each do |x|
+                        bits << [k, x]
+                    end
+                else
+                    bits << [k, v]
+                end
+            end
+
+            return Addressable::URI.form_encode(bits)
+        end
+
+        def each_row
+            query = get_query_string
+            @uri.open(:method => :post, :body => query) do |f|
+                container = ''
+                f.each_line do |line|
+                    if line.start_with?("[")
+                        begin
+                            row = ResultsRow.new(line.chomp("," + $/), @view)
+                        rescue => e
+                            raise ServiceError, "Error parsing #{line}: #{e.message}"
+                        end
+                        yield row
+                    else
+                        container << line
+                    end
+                end
+                begin
+                    result_set = JSON.parse(container)
+                rescue JSON::ParserError => e
+                    raise "Error parsing container: #{container}, #{e.message}"
+                end
+                unless result_set["wasSuccessful"]
+                    raise ServiceError, result_set["error"]
+                end
+            end
+
+        end
+    end
+
+    class ServiceError < RuntimeError
+    end
+
 
 end
