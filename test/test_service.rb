@@ -9,7 +9,7 @@ p service.model.name
 q = service.new_query("Employee")
 q.add_views("name", "age")
 
-p q.to_xml.to_s
+puts q.to_xml
 
 sum = 0
 q.each_row do |emp|
