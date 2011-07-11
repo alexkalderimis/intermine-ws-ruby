@@ -252,6 +252,18 @@ class TestQuery < Test::Unit::TestCase
         conA = query.constraints[0]
         conB = query.constraints[1]
 
+        query = PathQuery::Query.new(@model)
+        query.add_constraint(
+            :path => "Employee.name",
+            :op => "IS NULL"
+        )
+        query.add_constraint(
+            :path => "Employee.department",
+            :op => "IS NOT NULL"
+        )
+        conA = query.constraints[0]
+        conB = query.constraints[1]
+
         assert_equal(conA.path.to_s, "Employee.name")
         assert_equal(conB.path.to_s, "Employee.department")
 
@@ -261,10 +273,10 @@ class TestQuery < Test::Unit::TestCase
 
     def test_unqualified_unary_constraint
         query = PathQuery::Query.new(@model, "Employee")
-        query.add_constraint({
+        query.add_constraint(
             :path => "name",
             :op => "IS NULL"
-        })
+        )
 
         conA = query.constraints[0]
         assert_equal(conA.path.to_s, "Employee.name")
@@ -275,10 +287,10 @@ class TestQuery < Test::Unit::TestCase
     def test_bad_unary_constraint
         query = PathQuery::Query.new(@model)
         assert_raise ArgumentError do
-            query.add_constraint({
+            query.add_constraint(
                 :path => "name",
                 :op => "IS MAYBE NULL"
-            })
+            )
         end
 
         query = PathQuery::Query.new(@model)
