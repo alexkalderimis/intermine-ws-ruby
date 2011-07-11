@@ -1,17 +1,23 @@
 require "rexml/document"
 require "intermine/model"
 require "intermine/results"
+require "intermine/service"
 
 module PathQuery
 
     include REXML
     class Query
+
+        LOWEST_CODE = "A"
+        HIGHEST_CODE = "Z"
+
         attr_accessor :name, :title, :root
         attr_reader :model, :joins, :constraints, :views, :sort_order, :logic
 
         def initialize(model, root=nil, service=nil)
             @model = model
             @service = service
+            @url = (@service.nil?) ? nil : @service.root + Service::QUERY_RESULTS_PATH
             if root
                 @root = Path.new(root, model).rootClass
             end
@@ -21,6 +27,7 @@ module PathQuery
             @sort_order = []
             @used_codes = []
             @logic_parser = LogicParser.new(self)
+            @constraint_factory = ConstraintFactory.new(self)
         end
 
         def to_xml
@@ -52,18 +59,19 @@ module PathQuery
         end
 
         def each_row
-            url = @service.root + Service::QUERY_RESULTS_PATH
-            params = {"query" => self.to_xml, "format" => "jsonrows"}
-            rr = Results::ResultsReader.new(url, params, self.views)
+            rr = Results::ResultsReader.new(@url, params, @views)
             rr.each_row {|row|
                 yield row
             }
         end
 
+        def results_size
+            rr = Results::ResultsReader.new(@url, params, @views)
+            return rr.get_size
+        end
+
         def results
-            url = @service.root + Service::QUERY_RESULTS_PATH
-            params = {"query" => self.to_xml, "format" => "jsonrows"}
-            rr = Results::ResultsReader.new(url, params, self.views)
+            rr = Results::ResultsReader.new(@url, params, @views)
             res = []
             rr.each_row {|row|
                 res << row
@@ -71,13 +79,6 @@ module PathQuery
             res
         end
 
-        def add_prefix(x)
-            if @root && !x.start_with?(@root.name)
-                return @root.name + "." + x
-            else 
-                return x
-            end
-        end
         
         def get_constraint(code)
             @constraints.each do |x|
@@ -126,11 +127,67 @@ module PathQuery
         end
 
         def add_constraint(parameters)
-            classes = [SingleValueConstraint, SubClassConstraint, 
+            con = @constraint_factory.make_constraint(parameters)
+            @constraints << con
+        end
+
+        def set_logic(value)
+            if value.is_a?(LogicGroup)
+                @logic = value
+            else
+                @logic = @logic_parser.parse_logic(value)
+            end
+        end
+
+        def next_code
+            c = LOWEST_CODE
+            while Query.is_valid_code(c)
+                return c unless used_codes.include?(c)
+                c = c.next
+            end
+            raise RuntimeError, "Maximum number of codes reached - all 26 have been allocated"
+        end
+
+        def used_codes
+            if @constraints.empty?
+                return []
+            else
+                return @constraints.select {|x| !x.is_a?(SubClassConstraint)}.map {|x| x.code}
+            end
+        end
+
+        def self.is_valid_code(str)
+            return (str.length == 1) && (str >= LOWEST_CODE) && (str <= HIGHEST_CODE)
+        end
+
+        def add_prefix(x)
+            if @root && !x.start_with?(@root.name)
+                return @root.name + "." + x
+            else 
+                return x
+            end
+        end
+
+        def params
+            return {"query" => self.to_xml}
+        end
+    end
+
+    class ConstraintFactory
+
+        def initialize(query)
+            @classes = [
+                SingleValueConstraint, 
+                SubClassConstraint, 
                 LookupConstraint, MultiValueConstraint, 
                 UnaryConstraint, LoopConstraint, ListConstraint]
+
+            @query = query
+        end
+
+        def make_constraint(parameters)
             attr_keys = parameters.keys
-            suitable_classes = classes.select { |cls| 
+            suitable_classes = @classes.select { |cls| 
                 is_suitable = true
                 attr_keys.each { |key| 
                     is_suitable = is_suitable && (cls.method_defined?(key)) 
@@ -150,10 +207,10 @@ module PathQuery
             con = cls.new
             parameters.each_pair { |key, value|
                 if key == :path || key == :loopPath
-                    value = Path.new(add_prefix(value), @model, subclasses)
+                    value = Path.new(@query.add_prefix(value), @query.model, @query.subclasses)
                 end
                 if key == :sub_class
-                    value = Path.new(value, @model)
+                    value = Path.new(value, @query.model)
                 end
                 con.send(key.to_s + '=', value)
             }
@@ -161,61 +218,20 @@ module PathQuery
             if con.respond_to?(:code)
                 code = con.code
                 if code.nil?
-                    con.code = next_code
+                    con.code = @query.next_code
                 else
                     code = code.to_s
-                    if !is_valid_codestr(code)
+                    unless Query.is_valid_code(code)
                         raise ArgumentError, "Coded must be between A and Z, got: #{code}"
                     end
-                    if @used_codes.include?(code[0])
-                        con.code = next_code
-                    else
-                        @used_codes << code[0]
+                    if @query.used_codes.include?(code)
+                        con.code = @query.next_code
                     end
                 end
             end
 
-            @constraints << con
+            return con
         end
-
-        def set_logic(value)
-            if value.is_a?(LogicGroup)
-                @logic = value
-            else
-                @logic = @logic_parser.parse_logic(value)
-            end
-        end
-
-        private 
-
-        def lowest_code 
-            return "A"[0]
-        end
-
-        def highest_code
-            return "Z"[0]
-        end
-
-        def is_valid_codestr(str)
-            return (str.length == 1) && is_valid_code(str[0])
-        end
-
-        def is_valid_code(chr)
-            return ((chr >= lowest_code) && (chr <= highest_code))
-        end
-
-        def next_code
-            c = lowest_code
-            while is_valid_code(c)
-                if !@used_codes.include?(c)
-                    @used_codes << c
-                    return c.chr
-                end
-                c += 1
-            end
-            raise RuntimeError, "Maximum number of codes reached - all 26 have been allocated"
-        end
-
     end
 
     module PathFeature

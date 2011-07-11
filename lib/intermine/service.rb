@@ -4,7 +4,6 @@ require 'intermine/model'
 require "intermine/query"
 
 class Service
-    include PathQuery
 
     VERSION_PATH = "/version"
     MODEL_PATH = "/model/json"
@@ -28,7 +27,7 @@ class Service
     end
 
     def new_query(rootClass=nil)
-        return Query.new(self.model, rootClass, self)
+        return PathQuery::Query.new(self.model, rootClass, self)
     end
 
     private

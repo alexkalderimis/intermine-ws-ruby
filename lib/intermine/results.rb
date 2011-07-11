@@ -130,8 +130,15 @@ module Results
             return Addressable::URI.form_encode(bits)
         end
 
+        def get_size
+            query = get_query_string + "&format=jsoncount"
+            container = @uri.open(:method => :post, :body => query).read
+            result_set = check_result_set(container)
+            return result_set["count"]
+        end
+
         def each_row
-            query = get_query_string
+            query = get_query_string + "&format=jsonrows"
             @uri.open(:method => :post, :body => query) do |f|
                 container = ''
                 f.each_line do |line|
@@ -146,16 +153,23 @@ module Results
                         container << line
                     end
                 end
-                begin
-                    result_set = JSON.parse(container)
-                rescue JSON::ParserError => e
-                    raise "Error parsing container: #{container}, #{e.message}"
-                end
-                unless result_set["wasSuccessful"]
-                    raise ServiceError, result_set["error"]
-                end
+                check_result_set(container)
             end
 
+        end
+
+        private
+
+        def check_result_set(container)
+            begin
+                result_set = JSON.parse(container)
+            rescue JSON::ParserError => e
+                raise "Error parsing container: #{container}, #{e.message}"
+            end
+            unless result_set["wasSuccessful"]
+                raise ServiceError, result_set["error"]
+            end
+            result_set
         end
     end
 

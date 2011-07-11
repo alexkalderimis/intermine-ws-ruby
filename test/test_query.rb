@@ -672,13 +672,14 @@ class TestQuery < Test::Unit::TestCase
         })
 
         codes = query.constraints.map { |x| 
+            # Filter out subclass codes
             begin 
                 x.code 
             rescue
                 nil
             end
         }
-        assert_equal(codes, ["A", nil, "B", "Q", "C", "D"])
+        assert_equal(["A", nil, "B", "Q", "C", "D"], codes)
     end
 
     def test_code_exhaustion

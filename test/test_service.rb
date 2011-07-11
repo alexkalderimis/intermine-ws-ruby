@@ -11,6 +11,11 @@ q.add_views("name", "age")
 
 p q.to_xml.to_s
 
+sum = 0
 q.each_row do |emp|
     puts emp
+    sum += emp["age"]
 end
+
+total = q.results_size
+puts "Average: #{sum/total} - #{total} employees"
