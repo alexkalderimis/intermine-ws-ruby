@@ -3,6 +3,24 @@ require "intermine/model"
 require "intermine/results"
 require "intermine/service"
 
+unless String.instance_methods.include?(:start_with?)
+
+    class String
+     
+        def start_with?(prefix)
+            prefix = Regexp.escape(prefix.to_s)
+            return self.match("^#{prefix}")
+        end
+
+        def end_with?(suffix)
+            suffix = Regexp.escape(suffix.to_s)
+            return self.match("#{suffix}$")
+        end
+
+    end
+end
+
+
 module PathQuery
 
     include REXML

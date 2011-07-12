@@ -890,6 +890,33 @@ class TestQuery < Test::Unit::TestCase
         end
     end
 
+    def compare_xml(a, b)
+        require "rexml/document"
+        docA = REXML::Document.new(a.to_s)
+        docB = REXML::Document.new(b.to_s)
+
+        a_elems = docA.elements.to_a
+        b_elems = docB.elements.to_a
+
+        (0 ... a_elems.size).each do |idx|
+            compare_elements(a_elems[idx], b_elems[idx])
+        end
+    end
+
+    def compare_elements(elemA, elemB)
+        assert_equal(elemA.name, elemB.name)
+        assert_equal(elemA.attributes, elemB.attributes)
+        assert_equal(elemA.text, elemB.text)
+        assert_equal(elemA.elements.size, elemB.elements.size)
+
+        a_elems = elemA.elements.to_a
+        b_elems = elemB.elements.to_a
+
+        (0 ... a_elems.size).each do |idx|
+            compare_elements(a_elems[idx], b_elems[idx])
+        end
+    end
+
     def test_query_element_xml
 
         query =  PathQuery::Query.new(@model, "Employee")
@@ -897,17 +924,17 @@ class TestQuery < Test::Unit::TestCase
         
         expected = "<query model='testmodel' view='Employee.name Employee.age Employee.fullTime Employee.department.name' sortOrder='Employee.name ASC'/>"
 
-        assert_equal(expected, query.to_xml.to_s)
+        compare_xml(expected, query.to_xml)
 
         query.title = "Ruby Query"
         query.add_sort_order("age", "desc")
 
         expected = "<query model='testmodel' title='Ruby Query' view='Employee.name Employee.age Employee.fullTime Employee.department.name' sortOrder='Employee.age DESC'/>"
-        assert_equal(expected, query.to_xml.to_s)
+        compare_xml(expected, query.to_xml)
 
         query.add_sort_order("name")
         expected = "<query model='testmodel' title='Ruby Query' view='Employee.name Employee.age Employee.fullTime Employee.department.name' sortOrder='Employee.age DESC Employee.name ASC'/>"
-        assert_equal(expected, query.to_xml.to_s)
+        compare_xml(expected, query.to_xml)
 
     end
 
@@ -966,7 +993,7 @@ class TestQuery < Test::Unit::TestCase
         "<constraint extraValue='zip' op='LOOKUP' code='G' value='zop' path='Employee'/>" + 
         "</query>"
 
-        assert_equal(expected, query.to_xml.to_s)
+        compare_xml(expected, query.to_xml.to_s)
     end
 
     def test_join_xml
@@ -984,7 +1011,7 @@ class TestQuery < Test::Unit::TestCase
             "<join path='Employee.department.company.address' style='OUTER'/>" +
             "</query>"
 
-        assert_equal(expected, query.to_xml.to_s)
+        compare_xml(expected, query.to_xml)
     end
 
     def test_all_xml
@@ -1050,7 +1077,7 @@ class TestQuery < Test::Unit::TestCase
             "<constraint extraValue='zip' op='LOOKUP' code='G' value='zop' path='Employee'/>" + 
         "</query>"
 
-        assert_equal(expected, query.to_xml.to_s)
+        compare_xml(expected, query.to_xml)
 
     end
 end
