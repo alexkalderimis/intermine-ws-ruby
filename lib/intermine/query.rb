@@ -44,7 +44,8 @@ module PathQuery
                 "model" => @model.name, 
                 "title" => @title, 
                 "sortOrder" => so,
-                "view" => @views.join(" ")
+                "view" => @views.join(" "),
+                "constraintLogic" => @logic
             }.delete_if { |k, v | !v })
             @joins.each { |join| 
                 query.add_element("join", join.attrs) 
@@ -65,7 +66,7 @@ module PathQuery
             }
         end
 
-        def results_size
+        def count
             rr = Results::ResultsReader.new(@url, params, @views)
             return rr.get_size
         end
@@ -98,6 +99,11 @@ module PathQuery
                 end
                 @views << path
             end
+            return self
+        end
+
+        def select(*views)
+            return add_views(views)
         end
 
         def subclasses
@@ -116,6 +122,11 @@ module PathQuery
                 @root = p.rootClass
             end
             @joins << Join.new(p, style)
+            return self
+        end
+
+        def join(*args)
+            return add_join(*args)
         end
 
         def add_sort_order(path, direction="ASC") 
@@ -124,11 +135,22 @@ module PathQuery
                 raise ArgumentError, "Sort order (#{p}) not in view"
             end
             @sort_order << SortOrder.new(p, direction)
+            return self
         end
 
-        def add_constraint(parameters)
+        def order_by(*args)
+            return add_sort_order(*args)
+        end
+
+        def add_constraint(*parameters)
             con = @constraint_factory.make_constraint(parameters)
             @constraints << con
+            return con
+        end
+
+        def where(*parameters)
+            add_constraint(*parameters)
+            return self
         end
 
         def set_logic(value)
@@ -137,6 +159,7 @@ module PathQuery
             else
                 @logic = @logic_parser.parse_logic(value)
             end
+            return self
         end
 
         def next_code
@@ -169,7 +192,11 @@ module PathQuery
         end
 
         def params
-            return {"query" => self.to_xml}
+            hash = {"query" => self.to_xml}
+            if @service and @service.token
+                hash["token"] = @service.token
+            end
+            return hash
         end
     end
 
@@ -185,7 +212,24 @@ module PathQuery
             @query = query
         end
 
-        def make_constraint(parameters)
+        def make_constraint(args)
+            case args.length 
+            when 2
+                parameters = {:path => args[0], :op => args[1]}
+            when 3
+                if args[2].is_a?(Array)
+                    parameters = {:path => args[0], :op => args[1], :values => args[2]}
+                elsif LoopConstraint.valid_ops.include?(args[1])
+                    parameters = {:path => args[0], :op => args[1], :loopPath => args[2]}
+                else
+                    parameters = {:path => args[0], :op => args[1], :value => args[2]}
+                end
+            when 4
+                parameters = {:path => args[0], :op => args[1], :value => args[2], :extra_value => args[3]}
+            else
+                parameters = args.first
+            end
+
             attr_keys = parameters.keys
             suitable_classes = @classes.select { |cls| 
                 is_suitable = true
