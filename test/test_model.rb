@@ -20,7 +20,7 @@ class TestModel < Test::Unit::TestCase
         assert_equal("Department", dept.name)
         assert_equal(false, dept.isInterface)
         assert_equal(6, dept.fields.size)
-        assert_equal(dept.fields.keys, ["company", "name", "manager", "id", "rejectedEmployee", "employees"])
+        assert_equal(dept.fields.keys.sort, ["company", "employees", "id", "manager", "name", "rejectedEmployee"])
 
         assert_equal(dept.get_field("company").referencedType, @model.get_cd("Company"))
 
@@ -289,7 +289,7 @@ class TestModel < Test::Unit::TestCase
             assert_kind_of(@model.get_cd("Employee").to_module, emp)
         end
 
-        dep.employees.drop(1).each do |manager|
+        dep.employees.slice(1, 2).each do |manager|
             assert_kind_of(@model.get_cd("Manager").to_module, manager)
         end
 

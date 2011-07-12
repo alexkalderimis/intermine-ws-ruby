@@ -63,7 +63,7 @@ class Model
             raise ArgumentError, "Incompatible path '#{path}': #{obj} is not a #{root}"
         end
         begin
-            res = parts.reduce(obj) do |memo, part| 
+            res = parts.inject(obj) do |memo, part| 
                 args = part.split(/[\[\]]/)
                 if args.length == 2
                     args[0] = "[]"
@@ -71,8 +71,8 @@ class Model
                 end
                 memo.send(*args) 
             end
-        rescue NoMethodError
-            raise ArgumentError, "Incompatible path '#{path}' for #{obj}"
+        rescue NoMethodError => e
+            raise ArgumentError, "Incompatible path '#{path}' for #{obj}, #{e}"
         end
         return res
     end
