@@ -34,6 +34,23 @@ class TestModel < Test::Unit::TestCase
         assert_raise(PathException) {manager.subclass_of("Foo")}
     end
 
+    def test_attributes
+        dept = @model.get_cd("Department")
+        assert_equal(2, dept.attributes.size)
+
+        manager = @model.get_cd("Manager")
+        assert_equal(7, manager.attributes.size)
+    end
+
+    def test_sugar
+        dept = @model.get_cd("Department")
+
+        table = @model.table("Department")
+
+        assert_equal(dept, table)
+    end
+
+
     def test_good_paths
 
         path = Path.new("Employee.name", @model)
