@@ -3,11 +3,12 @@ require 'json'
 
 class Model
 
-    attr_accessor :name, :classes
+    attr_reader :name, :classes, :service
 
-    def initialize(model_data) 
+    def initialize(model_data, service=nil) 
         result = JSON.parse(model_data)
         @model = result["model"]
+        @service = service
         @name = @model["name"]
         @classes = {}
         @model["classes"].each do |k, v| 
@@ -23,6 +24,11 @@ class Model
         end
 
     end
+
+    def table(name)
+        return get_cd(name)
+    end
+
 
     def get_cd(cls)
         if cls.is_a?(ClassDescriptor)
@@ -156,6 +162,17 @@ class ClassDescriptor
                 set_key_value(k, v)
             end
         end
+    end
+
+    def new_query
+        q = @model.service.new_query(self.name)
+        return q
+    end
+
+    def select(*cols)
+        q = new_query
+        q.add_views(cols)
+        return q
     end
 
     def get_field(name)
