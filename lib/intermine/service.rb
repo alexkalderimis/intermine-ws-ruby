@@ -9,7 +9,7 @@ class Service
     MODEL_PATH = "/model/json"
     QUERY_RESULTS_PATH = "/query/results"
 
-    attr_reader :version, :root
+    attr_reader :version, :root, :token
 
     def initialize(root, token=nil)
         @root = root
@@ -21,7 +21,7 @@ class Service
     def model
         if @model.nil?
             data = fetch(@root + MODEL_PATH)
-            @model = Model.new(data)
+            @model = Model.new(data, self)
         end
         @model
     end
@@ -32,9 +32,18 @@ class Service
 
     private
 
-    def fetch(url)
+    def prepare_uri(url)
         uri = URI(url)
-        uri.query = "token=#{@token}" if @token
+        if uri.query
+            uri.query += "&token=#{@token}" if @token
+        else
+            uri.query = "token=#{@token}" if @token
+        end
+        return uri
+    end
+
+    def fetch(url)
+        uri = prepare_uri(url)
         return uri.open.read
     end
 end
