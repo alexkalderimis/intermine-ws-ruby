@@ -179,6 +179,10 @@ class ClassDescriptor
         return @fields[name]
     end
 
+    def attributes
+        return @fields.select {|k, v| v.is_a?(AttributeDescriptor)}.map {|pair| pair[1]}
+    end
+
     def to_s 
         return "<#{self.class.name}:#{self.object_id} #{self.model.name}.#{@name}>"
     end
@@ -341,6 +345,22 @@ class Path
             return last.referencedType.name
         else
             return last.dataType
+        end
+    end
+
+    def end_cd
+        last = @elements.last
+        if last.is_a?(ClassDescriptor)
+            return last
+        elsif last.respond_to?(:referencedType)
+            return last.referencedType
+        else
+            penult = @elements[-2]
+            if penult.is_a?(ClassDescriptor)
+                return penult
+            else
+                return penult.referencedType
+            end
         end
     end
 

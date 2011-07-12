@@ -93,11 +93,18 @@ module PathQuery
         def add_views(*views)
             views.flatten.map do |x| 
                 y = add_prefix(x)
-                path = Path.new(y, @model, subclasses)
-                if @root.nil?
-                    @root = path.rootClass
+                if y.end_with?("*")
+                    prefix = y.chomp(".*")
+                    path = Path.new(prefix, @model, subclasses)
+                    attrs = path.end_cd.attributes.map {|x| prefix + "." + x.name}
+                    add_views(attrs)
+                else
+                    path = Path.new(y, @model, subclasses)
+                    if @root.nil?
+                        @root = path.rootClass
+                    end
+                    @views << path
                 end
-                @views << path
             end
             return self
         end
