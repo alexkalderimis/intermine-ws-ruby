@@ -1,7 +1,10 @@
 require "rexml/document"
+require "rexml/streamlistener"
+require "stringio"
 require "intermine/model"
 require "intermine/results"
 require "intermine/service"
+require "intermine/lists"
 
 unless String.instance_methods.include?(:start_with?)
 
@@ -20,10 +23,110 @@ unless String.instance_methods.include?(:start_with?)
     end
 end
 
+class Array
+  def every(count)
+    chunks = []
+    each_with_index do |item, index|
+      chunks << [] if index % count == 0
+      chunks.last << item
+    end
+    chunks
+  end
+  alias / every
+end
+
 
 module PathQuery
 
     include REXML
+
+    class QueryLoader
+
+        attr_reader :model
+
+        def initialize(model)
+            @model = model
+        end
+
+        def parse(xml)
+            xml = (xml.is_a?(String)) ? StringIO.new(xml) : xml
+            handler = QueryBuilder.new(@model)
+            REXML::Document.parse_stream(xml, handler)
+            return handler.query
+        end
+            
+    end
+
+    class QueryBuilder
+        include REXML::StreamListener
+
+        def initialize(model)
+            @model = model
+            @query_attributes = {}
+            @subclass_constraints = []
+            @coded_constraints = []
+            @joins = []
+        end
+
+        def query
+            q = Query.new(@model)
+            # Add first, in case other bits depend on them
+            @subclass_constraints.each do |sc|
+                q.add_constraint(sc)
+            end
+            @query_attributes.each do |k,v|
+                q.send(k + "=", v)
+            end
+            @joins.each do |j|
+                q.add_join(*j)
+            end
+            @coded_constraints.each do |con|
+                q.add_constraint(con)
+            end
+            return q
+        end
+
+        def tag_start(name, attrs)
+            @in_value = false
+            if name == "query"
+                attrs.each do |a|
+                    @query_attributes[a.first] = a.last if a.first != "model"
+                end
+            elsif name=="constraint"
+                if attrs.has_key?("type")
+                    @subclass_constraints.push({:path => attrs["path"], :sub_class => attrs["type"]})
+                else
+                    args = {}
+                    args[:path] = attrs["path"]
+                    args[:op] = attrs["op"]
+                    args[:value] = attrs["value"] if attrs.has_key?("value")
+                    args[:loopPath] = attrs["loopPath"] if attrs.has_key?("loopPath")
+                    args[:extra_value] = attrs["extraValue"] if attrs.has_key?("extraValue")
+                    args[:code] = attrs["code"]
+                    if MultiValueConstraint.valid_ops.include?(attrs["op"])
+                        args[:values] = [] # actual values will be pushed on later
+                    end
+                    if attrs.has_key?("loopPath")
+                        LoopConstraint.xml_ops.each do |k,v|
+                            args[:op] = k if v == args[:op]
+                        end
+                    end
+                    @coded_constraints.push(args)
+                end 
+            elsif name=="value"
+                @in_value = true
+            elsif name=="join"
+                @joins.push([attrs["path"], attrs["style"]])
+            end
+
+        end
+
+        def text(t)
+            @coded_constraints.last[:values].push(t)
+        end
+
+    end
+
     class Query
 
         LOWEST_CODE = "A"
@@ -46,6 +149,10 @@ module PathQuery
             @used_codes = []
             @logic_parser = LogicParser.new(self)
             @constraint_factory = ConstraintFactory.new(self)
+        end
+
+        def self.parser(model)
+            return QueryLoader.new(model)
         end
 
         def to_xml
@@ -131,6 +238,15 @@ module PathQuery
             return add_views(views)
         end
 
+        def view=(view)
+            if view.is_a?(Array)
+                views = view
+            else
+                views = view.split(/(?:,\s*|\s+)/)
+            end
+            return add_views(*views)
+        end
+
         def subclasses
             subclasses = {}
             @constraints.each do |con|
@@ -163,7 +279,22 @@ module PathQuery
             return self
         end
 
+        def sortOrder=(so)
+            if so.is_a?(Array)
+                sos = so
+            else
+                sos = so.split(/(ASC|DESC)/).map {|x| x.strip}.every(2)
+            end
+            sos.each do |args|
+                add_sort_order(*args)
+            end
+        end
+
         def order_by(*args)
+            return add_sort_order(*args)
+        end
+
+        def order(*args)
             return add_sort_order(*args)
         end
 
@@ -173,9 +304,70 @@ module PathQuery
             return con
         end
 
-        def where(*parameters)
-            add_constraint(*parameters)
-            return self
+        def where(*wheres)
+           wheres.each do |w|
+             w.each do |k,v|
+                if v.is_a?(Hash)
+                    parameters = {:path => k}
+                    v.each do |subk, subv|
+                        normalised_k = subk.to_s.upcase.gsub(/_/, " ")
+                        if subk == :with
+                            parameters[:extra_value] = subv
+                        elsif subk == :sub_class
+                            parameters[subk] = subv
+                        elsif subk == :code
+                            parameters[:code] = subv
+                        elsif LoopConstraint.valid_ops.include?(normalised_k)
+                            parameters[:op] = normalised_k
+                            parameters[:loopPath] = subv
+                        else
+                            if subv.nil?
+                                if subk == "="
+                                    parameters[:op] = "IS NULL"
+                                elsif subk == "!="
+                                    parameters[:op] = "IS NOT NULL"
+                                else
+                                    parameters[:op] = normalised_k
+                                end
+                            elsif subv.is_a?(Range) or subv.is_a?(Array)
+                                if subk == "="
+                                    parameters[:op] = "ONE OF"
+                                elsif subk == "!="
+                                    parameters[:op] = "NONE OF"
+                                else
+                                    parameters[:op] = normalised_k
+                                end
+                                parameters[:values] = subv.to_a
+                            elsif subv.is_a?(List)
+                                if subk == "="
+                                    parameters[:op] = "IN"
+                                elsif subk == "!="
+                                    parameters[:op] = "NOT IN"
+                                else
+                                    parameters[:op] = normalised_k
+                                end
+                                parameters[:value] = subv.name
+                            else
+                                parameters[:op] = normalised_k
+                                parameters[:value] = subv
+                            end
+                        end
+                    end
+                    add_constraint(parameters)
+                elsif v.is_a?(Range) or v.is_a?(Array)
+                    add_constraint(k.to_s, 'ONE OF', v.to_a)
+                elsif v.is_a?(ClassDescriptor)
+                    add_constraint(:path => k.to_s, :sub_class => v.name)
+                elsif v.is_a?(List)
+                    add_constraint(k.to_s, 'IN', v.name)
+                elsif v.nil?
+                    add_constraint(k.to_s, "IS NULL")
+                else
+                    add_constraint(k.to_s, '=', v)
+                end
+             end
+           end
+           return self
         end
 
         def set_logic(value)
@@ -209,6 +401,7 @@ module PathQuery
         end
 
         def add_prefix(x)
+            x = x.to_s
             if @root && !x.start_with?(@root.name)
                 return @root.name + "." + x
             else 
@@ -369,7 +562,7 @@ module PathQuery
     module ObjectConstraint
         def validate
             if @path.elements.last.is_a?(AttributeDescriptor)
-                raise ArgumentError, "#{self.class.name}s must be on objects or references to objects"
+                raise ArgumentError, "#{self.class.name}s must be on objects or references to objects, got #{@path}"
             end
         end
     end
@@ -377,8 +570,37 @@ module PathQuery
     module AttributeConstraint
         def validate
             if !@path.elements.last.is_a?(AttributeDescriptor)
-                raise ArgumentError, "Attribute constraints must be on attributes"
+                raise ArgumentError, "Attribute constraints must be on attributes, got #{@path}"
             end
+        end
+
+        def coerce_value(val)
+            nums = ["Float", "Double", "float", "double"]
+            ints = ["Integer", "int"]
+            bools = ["Boolean", "boolean"]
+            dataType = @path.elements.last.dataType.split(".").last
+            coerced = val
+            if nums.include?(dataType)
+                if !val.is_a?(Numeric)
+                    coerced = val.to_f
+                end
+            end
+            if ints.include?(dataType)
+                coerced = val.to_i
+            end
+            if bools.include?(dataType)
+                if !val.is_a?(TrueClass) && !val.is_a?(FalseClass)
+                    if val == 0 or val == "0" or val.downcase == "yes" or val.downcase == "true" or val.downcase == "t"
+                        coerced = true
+                    elsif val == 1 or val == "1" or val.downcase == "no" or val.downcase == "false" or val.downcase == "f"
+                        coerced = false
+                    end
+                end
+            end
+            if coerced == 0 and not val.to_s.start_with?("0")
+               raise ArgumentError, "cannot coerce #{val} to a #{dataType}"
+            end
+            return coerced
         end
 
         def validate_value(val)
@@ -392,6 +614,7 @@ module PathQuery
                 end
             end
             if ints.include?(dataType)
+                val = val.to_i
                 if !val.is_a?(Integer)
                     raise ArgumentError, "value #{val} is not an integer for #{@path}"
                 end
@@ -405,7 +628,7 @@ module PathQuery
     end
 
     class SingleValueConstraint
-        @valid_ops = ["=", ">", "<", ">=", "<=", "!="]
+        @valid_ops = ["=", ">", "<", ">=", "<=", "!=", "CONTAINS"]
         include PathFeature
         include Coded
         include AttributeConstraint
@@ -420,6 +643,7 @@ module PathQuery
 
         def validate 
             super
+            @value = coerce_value(@value)
             validate_value(@value)
         end
 
@@ -505,6 +729,7 @@ module PathQuery
 
         def validate
             super
+            @values.map! {|val| coerce_value(val)}
             @values.each do |val|
                 validate_value(val)
             end

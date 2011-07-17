@@ -1,8 +1,11 @@
 require File.dirname(__FILE__) + "/test_helper.rb"
 require "intermine/query"
 require "intermine/model"
+require "intermine/lists"
+require "intermine/service"
 
 require "test/unit"
+
 
 class TestQuery < Test::Unit::TestCase
 
@@ -345,6 +348,31 @@ class TestQuery < Test::Unit::TestCase
         assert_equal(conD.value, false)
     end
 
+    def test_value_coercion
+        query = PathQuery::Query.new(@model)
+        query.add_constraint({
+            :path => "Employee.age",
+            :op => ">",
+            :value => "1"
+        })
+        query.add_constraint({
+            :path => "Employee.fullTime",
+            :op => "<",
+            :value => "false"
+        })
+        conA = query.constraints[0]
+        conB = query.constraints[1]
+
+        assert_equal(conA.path.to_s, "Employee.age")
+        assert_equal(conB.path.to_s, "Employee.fullTime")
+
+        assert_equal(conA.op, ">")
+        assert_equal(conB.op, "<")
+
+        assert_equal(conA.value, 1)
+        assert_equal(conB.value, false)
+    end
+
     def test_unqualified_binary_constraint
         query = PathQuery::Query.new(@model, "Employee")
         query.add_constraint({
@@ -384,7 +412,7 @@ class TestQuery < Test::Unit::TestCase
             query.add_constraint({
                 :path => "fullTime",
                 :op => "=",
-                :value => 0
+                :value => "foo"
             })
         end
 
@@ -903,11 +931,42 @@ class TestQuery < Test::Unit::TestCase
         end
     end
 
+    def fail_xml_compare(elemA, elemB, problem, e)
+        formatter = REXML::Formatters::Pretty.new
+        elemA_str = String.new
+        elemB_str = String.new
+        formatter.write(elemA, elemA_str)
+        formatter.write(elemB, elemB_str)
+        first_part = "#{elemA_str}\nis not equal to\n#{elemB_str}\n"
+        
+        raise Test::Unit::AssertionFailedError, "#{first_part}because #{problem} - #{e.message}" 
+    end
+
     def compare_elements(elemA, elemB)
-        assert_equal(elemA.name, elemB.name)
-        assert_equal(elemA.attributes, elemB.attributes)
-        assert_equal(elemA.text, elemB.text)
-        assert_equal(elemA.elements.size, elemB.elements.size)
+
+        begin
+            assert_equal(elemA.name, elemB.name)
+        rescue Test::Unit::AssertionFailedError => e
+            fail_xml_compare(elemA, elemB, "names of element differ", e)
+        end
+
+        begin
+            assert_equal(elemA.attributes, elemB.attributes)
+        rescue Test::Unit::AssertionFailedError => e
+            fail_xml_compare(elemA, elemB, "attributes of element differ", e)
+        end
+
+        begin
+            assert_equal(elemA.text, elemB.text)
+        rescue Test::Unit::AssertionFailedError => e
+            fail_xml_compare(elemA, elemB, "text contents of element differ", e)
+        end
+
+        begin
+            assert_equal(elemA.elements.size, elemB.elements.size)
+        rescue Test::Unit::AssertionFailedError => e
+            fail_xml_compare(elemA, elemB, "number of children of element differ", e)
+        end
 
         a_elems = elemA.elements.to_a
         b_elems = elemB.elements.to_a
@@ -1080,4 +1139,28 @@ class TestQuery < Test::Unit::TestCase
         compare_xml(expected, query.to_xml)
 
     end
+
+    def test_unmarshall
+        # Tricky xml with all constraint types and subclassing, as well as integer values
+        xml = "<query model='testmodel' view='Employee.name Employee.age Employee.fullTime Employee.department.name Employee.title' sortOrder='Employee.title DESC'>" + 
+            "<join path='Employee.department' style='OUTER'/>" +
+            "<join path='Employee.department.company' style='INNER'/>" +
+            "<join path='Employee.department.company.address' style='OUTER'/>" +
+            "<constraint type='Manager' path='Employee'/>" + 
+            "<constraint op='IS NOT NULL' code='A' path='Employee.department'/>" + 
+            "<constraint op='&lt;' code='B' value='foo' path='Employee.name'/>" + 
+            "<constraint op='ONE OF' code='C' path='Employee.age'>" + 
+                "<value>17</value><value>23</value><value>37</value>" +
+            "</constraint>" + 
+            "<constraint op='IN' code='D' value='bar' path='Employee'/>" + 
+            "<constraint loopPath='Employee.department.manager' op='=' code='E' path='Employee'/>" +
+            "<constraint op='LOOKUP' code='F' value='quux' path='Employee'/>" + 
+            "<constraint extraValue='zip' op='LOOKUP' code='G' value='zop' path='Employee'/>" + 
+        "</query>"
+
+        q = PathQuery::Query.parser(@model).parse(xml)
+
+        compare_xml(xml, q.to_xml)
+    end
+
 end

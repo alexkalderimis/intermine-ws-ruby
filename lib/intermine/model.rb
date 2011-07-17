@@ -77,6 +77,13 @@ class Model
         return res
     end
 
+    private
+
+    # For mocking in tests
+    def set_service(service)
+        @service = service
+    end
+
 end
 
 class InterMineObject
@@ -172,6 +179,13 @@ class ClassDescriptor
     def select(*cols)
         q = new_query
         q.add_views(cols)
+        return q
+    end
+
+    def where(*args)
+        q = new_query
+        q.select("*")
+        q.where(*args)
         return q
     end
 

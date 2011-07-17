@@ -11,11 +11,11 @@ class Service
 
     attr_reader :version, :root, :token
 
-    def initialize(root, token=nil)
+    def initialize(root, token=nil, mock_model=nil)
         @root = root
         @token = token
         @version = fetch(@root + VERSION_PATH).to_i
-        @model = nil
+        @model = mock_model
     end
 
     def model

@@ -90,11 +90,10 @@ module Results
 
     class ResultsReader
 
-        def initialize(uri, params, view)
+        def initialize(uri, query)
             @uri = URI(uri)
             @http = Net::HTTP.new(@uri.host, @uri.port)
-            @params = params
-            @view = view
+            @query = query
         end
 
         def get_each_line
@@ -117,7 +116,7 @@ module Results
 
         def get_query_string
             bits = []
-            @params.each do |k, v|
+            @query.params.each do |k, v|
                 if v.is_a?(Array)
                     v.each do |x|
                         bits << [k, x]
@@ -144,11 +143,37 @@ module Results
                 f.each_line do |line|
                     if line.start_with?("[")
                         begin
-                            row = ResultsRow.new(line.chomp("," + $/), @view)
+                            row = ResultsRow.new(line.chomp("," + $/), @query.view)
                         rescue => e
                             raise ServiceError, "Error parsing #{line}: #{e.message}"
                         end
                         yield row
+                    else
+                        container << line
+                    end
+                end
+                check_result_set(container)
+            end
+
+        end
+
+        def each_result
+            query = get_query_string + "&format=jsonobjects"
+            model = @query.model
+            @uri.open(:method => :post, :body => query) do |f|
+                container = ''
+                f.each_line do |line|
+                    line.chomp!(",", $/)
+                    if line.start_with?("{") and line.end_with?("}")
+                        begin
+                            data = JSON.parse(line)
+                            result = model.make_new(data)
+                        rescue JSON::ParserError => e
+                            raise ServiceError, "Error parsing #{line}: #{e.message}"
+                        rescue => e
+                            raise ServiceError, "Could not instantiate this result object: #{e.message}"
+                        end
+                        yield result
                     else
                         container << line
                     end
