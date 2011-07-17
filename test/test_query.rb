@@ -1206,4 +1206,55 @@ class TestQuery < Test::Unit::TestCase
         compare_xml expected, q.to_xml
     end
 
+    def test_template_parameters
+
+        # Tricky xml with all constraint types and subclassing, as well as integer values
+        src = "<template name='unmarshal_template' longDescription='Some kind of text description' comment='some comment'>" + 
+            "<query model='testmodel' sortOrder='Employee.title DESC' view='Employee.name Employee.age Employee.fullTime Employee.department.name Employee.title'>" +
+            "<join path='Employee.department' style='OUTER'/>" +
+            "<join path='Employee.department.company' style='INNER'/>" +
+            "<join path='Employee.department.company.address' style='OUTER'/>" +
+            "<constraint type='Manager' path='Employee'/>" + 
+            "<constraint op='IS NOT NULL' code='A' path='Employee.department'/>" + 
+            "<constraint op='&lt;' code='B' value='foo' path='Employee.name'/>" + 
+            "<constraint op='ONE OF' code='C' path='Employee.age'>" + 
+                "<value>17</value><value>23</value><value>37</value>" +
+            "</constraint>" + 
+            "<constraint op='IN' code='D' value='bar' path='Employee'/>" + 
+            "<constraint loopPath='Employee.department.manager' op='=' code='E' path='Employee'/>" +
+            "<constraint op='LOOKUP' code='F' value='quux' path='Employee'/>" + 
+            "<constraint extraValue='zip' op='LOOKUP' code='G' value='zop' path='Employee'/>" + 
+            "</query>" + 
+            "</template>"
+
+        q = PathQuery::Template.parser(@model).parse(src)
+
+        expected = {
+            "name"=>"unmarshal_template",
+            "constraint1"=>"Employee.department",
+            "constraint2"=>"Employee.name",
+            "constraint3"=>"Employee.age",
+            "constraint4"=>"Employee",
+            "constraint5"=>"Employee",
+            "constraint6"=>"Employee",
+            "constraint7"=>"Employee",
+            "op1"=>"IS NOT NULL",
+            "op2"=>"lt",
+            "op3"=>"ONE OF",
+            "op4"=>"IN",
+            "op5"=>"eq",
+            "op6"=>"LOOKUP",
+            "op7"=>"LOOKUP",
+            "value2"=>"foo",
+            "value3"=>[17, 23, 37],
+            "value4"=>"bar",
+            "loopPath5"=>"Employee.department.manager",
+            "value6"=>"quux",
+            "value7"=>"zop",
+            "extra7"=>"zip"
+        }
+
+        assert_equal(expected, q.params)
+     end
+
 end

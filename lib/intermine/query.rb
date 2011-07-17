@@ -219,6 +219,14 @@ module PathQuery
             return QueryLoader.new(model)
         end
 
+        def coded_constraints
+            return @constraints.select {|x| !x.is_a?(SubClassConstraint)}
+        end
+        
+        def subclass_constraints
+            return @constraints.select {|x| x.is_a?(SubClassConstraint)}
+        end
+
         def to_xml
             doc = REXML::Document.new
 
@@ -239,10 +247,10 @@ module PathQuery
             @joins.each { |join| 
                 query.add_element("join", join.attrs) 
             }
-            @constraints.select {|x| x.is_a?(SubClassConstraint)}.each { |con|
+            subclass_constraints.each { |con|
                 query.add_element(con.to_elem) 
             }
-            @constraints.select {|x| !x.is_a?(SubClassConstraint)}.each { |con|
+            coded_constraints.each { |con|
                 query.add_element(con.to_elem) 
             }
             return doc
@@ -592,6 +600,10 @@ module PathQuery
             return elem
         end
 
+        def template_param_op
+            return @op
+        end
+
     end
 
     module Coded
@@ -740,6 +752,25 @@ module PathQuery
 
     class TemplateSingleValueConstraint < SingleValueConstraint
         include TemplateConstraint
+
+        def template_param_op
+            case @op
+            when '='
+                return 'eq'
+            when '!='
+                return 'ne'
+            when '<'
+                return 'lt'
+            when '<='
+                return 'le'
+            when '>'
+                return 'gt'
+            when '>='
+                return 'ge'
+            else
+                return @op
+            end
+        end
     end
 
     class ListConstraint < SingleValueConstraint
@@ -793,6 +824,14 @@ module PathQuery
 
     class TemplateLoopConstraint < LoopConstraint
         include TemplateConstraint
+        def template_param_op
+            case @op
+            when 'IS'
+                return 'eq'
+            when 'IS NOT'
+                return 'ne'
+            end
+        end
     end
 
     class UnaryConstraint
@@ -1110,6 +1149,36 @@ module PathQuery
             t = doc.add_element 'template', {"name" => @name, "title" => @title, "longDescription" => @longDescription, "comment" => @comment}.reject {|k,v| v.nil?}
             t.add_element super
             return t
+        end
+
+        def editable_constraints
+            return coded_constraints.select {|con| con.editable}
+        end
+
+        def active_constraints
+            return coded_constraints.select {|con| con.switchable != "off"}
+        end
+
+        def params 
+            p = {"name" => @name}
+            actives = active_constraints
+            actives.each_index do |idx|
+                con = actives[idx]
+                count = (idx + 1).to_s
+                p["constraint" + count] = con.path.to_s
+                p["op" + count] = con.template_param_op
+                if con.respond_to? :value
+                    p["value" + count] = con.value
+                elsif con.respond_to? :values
+                    p["value" + count] = con.values
+                elsif con.respond_to? :loopPath
+                    p["loopPath" + count] = con.loopPath.to_s
+                end
+                if con.respond_to? :extra_value and !con.extra_value.nil?
+                    p["extra" + count] = con.extra_value
+                end
+            end
+            return p
         end
 
     end
