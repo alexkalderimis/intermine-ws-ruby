@@ -48,13 +48,24 @@ module PathQuery
             @model = model
         end
 
+        def get_handler
+            return QueryBuilder.new(@model)
+        end
+
         def parse(xml)
             xml = (xml.is_a?(String)) ? StringIO.new(xml) : xml
-            handler = QueryBuilder.new(@model)
+            handler = get_handler
             REXML::Document.parse_stream(xml, handler)
             return handler.query
         end
             
+    end
+
+    class TemplateLoader < QueryLoader
+        
+        def get_handler
+            return TemplateBuilder.new(@model)
+        end
     end
 
     class QueryBuilder
@@ -69,12 +80,12 @@ module PathQuery
         end
 
         def query
-            q = Query.new(@model)
+            q = create_query
             # Add first, in case other bits depend on them
             @subclass_constraints.each do |sc|
                 q.add_constraint(sc)
             end
-            @query_attributes.each do |k,v|
+            @query_attributes.sort_by {|k, v| k}.reverse.each do |k,v|
                 q.send(k + "=", v)
             end
             @joins.each do |j|
@@ -93,36 +104,89 @@ module PathQuery
                     @query_attributes[a.first] = a.last if a.first != "model"
                 end
             elsif name=="constraint"
-                if attrs.has_key?("type")
-                    @subclass_constraints.push({:path => attrs["path"], :sub_class => attrs["type"]})
-                else
-                    args = {}
-                    args[:path] = attrs["path"]
-                    args[:op] = attrs["op"]
-                    args[:value] = attrs["value"] if attrs.has_key?("value")
-                    args[:loopPath] = attrs["loopPath"] if attrs.has_key?("loopPath")
-                    args[:extra_value] = attrs["extraValue"] if attrs.has_key?("extraValue")
-                    args[:code] = attrs["code"]
-                    if MultiValueConstraint.valid_ops.include?(attrs["op"])
-                        args[:values] = [] # actual values will be pushed on later
-                    end
-                    if attrs.has_key?("loopPath")
-                        LoopConstraint.xml_ops.each do |k,v|
-                            args[:op] = k if v == args[:op]
-                        end
-                    end
-                    @coded_constraints.push(args)
-                end 
+                process_constraint(attrs)
             elsif name=="value"
                 @in_value = true
             elsif name=="join"
                 @joins.push([attrs["path"], attrs["style"]])
             end
+        end
 
+        def process_constraint(attrs)
+            if attrs.has_key?("type")
+                @subclass_constraints.push({:path => attrs["path"], :sub_class => attrs["type"]})
+            else
+                args = {}
+                args[:path] = attrs["path"]
+                args[:op] = attrs["op"]
+                args[:value] = attrs["value"] if attrs.has_key?("value")
+                args[:loopPath] = attrs["loopPath"] if attrs.has_key?("loopPath")
+                args[:extra_value] = attrs["extraValue"] if attrs.has_key?("extraValue")
+                args[:code] = attrs["code"]
+                if MultiValueConstraint.valid_ops.include?(attrs["op"])
+                    args[:values] = [] # actual values will be pushed on later
+                end
+                if attrs.has_key?("loopPath")
+                    LoopConstraint.xml_ops.each do |k,v|
+                        args[:op] = k if v == args[:op]
+                    end
+                end
+                @coded_constraints.push(args)
+            end 
         end
 
         def text(t)
             @coded_constraints.last[:values].push(t)
+        end
+
+        private
+
+        def create_query
+            return Query.new(@model)
+        end
+
+    end
+
+    class TemplateBuilder < QueryBuilder
+
+        def initialize(model)
+            super
+            @template_attrs = {}
+        end
+
+        def tag_start(name, attrs)
+            super
+            if name == "template"
+                attrs.each do |a|
+                    @template_attrs[a.first] = a.last
+                end
+            end
+        end
+
+        def query
+            template = super
+            @template_attrs.each do |k,v|
+                template.send(k + '=', v)
+            end
+            return template
+        end
+
+        def process_constraint(attrs)
+            super
+            unless attrs.has_key? "type"
+                if attrs.has_key?("editable") and attrs["editable"].downcase == "false"
+                    @coded_constraints.last[:editable] = false
+                else
+                    @coded_constraints.last[:editable] = true
+                end
+                @coded_constraints.last[:switchable] = attrs["switchable"] || "locked"
+            end
+        end
+
+        private
+
+        def create_query
+            return Template.new(@model)
         end
 
     end
@@ -418,6 +482,7 @@ module PathQuery
         end
     end
 
+
     class ConstraintFactory
 
         def initialize(query)
@@ -496,6 +561,19 @@ module PathQuery
         end
     end
 
+    class TemplateConstraintFactory < ConstraintFactory
+        
+        def initialize(query)
+            super
+            @classes =  [
+                TemplateSingleValueConstraint, 
+                SubClassConstraint, 
+                TemplateLookupConstraint, TemplateMultiValueConstraint, 
+                TemplateUnaryConstraint, TemplateLoopConstraint, TemplateListConstraint]
+        end
+
+    end
+
     module PathFeature
         attr_accessor :path
 
@@ -503,16 +581,24 @@ module PathQuery
         end
     end
 
-    module Coded
-        attr_accessor :code, :op
-        def self.included(base)
-            base.extend(ClassMethods)
+    module TemplateConstraint
+
+        attr_accessor :editable, :switchable
+
+        def to_elem
+            attributes = {"editable" => @editable, "switchable" => @switchable}
+            elem = super
+            elem.add_attributes(attributes)
+            return elem
         end
 
-        module ClassMethods
-            def valid_ops
-                return @valid_ops
-            end
+    end
+
+    module Coded
+        attr_accessor :code, :op
+
+        def self.valid_ops
+            return []
         end
 
         def to_elem
@@ -628,11 +714,14 @@ module PathQuery
     end
 
     class SingleValueConstraint
-        @valid_ops = ["=", ">", "<", ">=", "<=", "!=", "CONTAINS"]
         include PathFeature
         include Coded
         include AttributeConstraint
         attr_accessor :value
+
+        def self.valid_ops 
+            return ["=", ">", "<", ">=", "<=", "!=", "CONTAINS"]
+        end
 
         def to_elem
             elem = super
@@ -649,19 +738,32 @@ module PathQuery
 
     end
 
+    class TemplateSingleValueConstraint < SingleValueConstraint
+        include TemplateConstraint
+    end
 
     class ListConstraint < SingleValueConstraint
-        @valid_ops = ["IN", "NOT IN"]
         include ObjectConstraint
+        
+        def self.valid_ops
+            return ["IN", "NOT IN"]
+        end
+    end
+
+    class TemplateListConstraint < ListConstraint
+        include TemplateConstraint
     end
 
     class LoopConstraint
         include PathFeature
         include Coded
         attr_accessor :loopPath
-        @valid_ops = ["IS", "IS NOT"]
 
-        def LoopConstraint.xml_ops
+        def self.valid_ops
+            return ["IS", "IS NOT"]
+        end
+
+        def self.xml_ops
             return { "IS" => "=", "IS NOT" => "!=" }
         end
 
@@ -689,16 +791,30 @@ module PathQuery
 
     end
 
+    class TemplateLoopConstraint < LoopConstraint
+        include TemplateConstraint
+    end
+
     class UnaryConstraint
         include PathFeature
         include Coded
-        @valid_ops = ["IS NULL", "IS NOT NULL"]
+        
+        def self.valid_ops
+            return ["IS NULL", "IS NOT NULL"]
+        end
 
     end
 
+    class TemplateUnaryConstraint < UnaryConstraint
+        include TemplateConstraint
+    end
+
     class LookupConstraint < ListConstraint
-        @valid_ops = ["LOOKUP"]
         attr_accessor :extra_value
+
+        def self.valid_ops
+            return ["LOOKUP"]
+        end
 
         def to_elem
             elem = super
@@ -710,11 +826,18 @@ module PathQuery
 
     end
 
+    class TemplateLookupConstraint < LookupConstraint
+        include TemplateConstraint
+    end
+
     class MultiValueConstraint 
         include PathFeature
         include Coded
         include AttributeConstraint
-        @valid_ops = ["ONE OF", "NONE OF"]
+        
+        def self.valid_ops 
+            return ["ONE OF", "NONE OF"]
+        end
 
         attr_accessor :values
         def to_elem 
@@ -734,6 +857,10 @@ module PathQuery
                 validate_value(val)
             end
         end
+    end
+
+    class TemplateMultiValueConstraint < MultiValueConstraint 
+        include TemplateConstraint
     end
 
     class SortOrder 
@@ -964,4 +1091,30 @@ module PathQuery
         end
 
     end
+
+    class Template < Query
+
+        attr_accessor :longDescription, :comment
+
+        def initialize(model, root=nil, service=nil)
+            super
+            @constraint_factory = TemplateConstraintFactory.new(self)
+        end
+
+        def self.parser(model)
+            return TemplateLoader.new(model)
+        end
+
+        def to_xml
+            doc = REXML::Document.new
+            t = doc.add_element 'template', {"name" => @name, "title" => @title, "longDescription" => @longDescription, "comment" => @comment}.reject {|k,v| v.nil?}
+            t.add_element super
+            return t
+        end
+
+    end
+
+    class TemplateConstraintFactory < ConstraintFactory
+    end
+
 end

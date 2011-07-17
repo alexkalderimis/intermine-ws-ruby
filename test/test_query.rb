@@ -1163,4 +1163,47 @@ class TestQuery < Test::Unit::TestCase
         compare_xml(xml, q.to_xml)
     end
 
+    def test_unmarshall_template
+        # Tricky xml with all constraint types and subclassing, as well as integer values
+        src = "<template name='unmarshal_template' longDescription='Some kind of text description' comment='some comment'>" + 
+            "<query model='testmodel' sortOrder='Employee.title DESC' view='Employee.name Employee.age Employee.fullTime Employee.department.name Employee.title'>" +
+            "<join path='Employee.department' style='OUTER'/>" +
+            "<join path='Employee.department.company' style='INNER'/>" +
+            "<join path='Employee.department.company.address' style='OUTER'/>" +
+            "<constraint type='Manager' path='Employee'/>" + 
+            "<constraint op='IS NOT NULL' code='A' path='Employee.department'/>" + 
+            "<constraint op='&lt;' code='B' value='foo' path='Employee.name'/>" + 
+            "<constraint op='ONE OF' code='C' path='Employee.age'>" + 
+                "<value>17</value><value>23</value><value>37</value>" +
+            "</constraint>" + 
+            "<constraint op='IN' code='D' value='bar' path='Employee'/>" + 
+            "<constraint loopPath='Employee.department.manager' op='=' code='E' path='Employee'/>" +
+            "<constraint op='LOOKUP' code='F' value='quux' path='Employee'/>" + 
+            "<constraint extraValue='zip' op='LOOKUP' code='G' value='zop' path='Employee'/>" + 
+            "</query>" + 
+            "</template>"
+
+        expected = "<template name='unmarshal_template' longDescription='Some kind of text description' comment='some comment'>" + 
+            "<query name='unmarshal_template' model='testmodel' sortOrder='Employee.title DESC' view='Employee.name Employee.age Employee.fullTime Employee.department.name Employee.title'>" +
+            "<join path='Employee.department' style='OUTER'/>" +
+            "<join path='Employee.department.company' style='INNER'/>" +
+            "<join path='Employee.department.company.address' style='OUTER'/>" +
+            "<constraint type='Manager' path='Employee'/>" + 
+            "<constraint op='IS NOT NULL' code='A' path='Employee.department' switchable='locked' editable='true'/>" + 
+            "<constraint op='&lt;' code='B' value='foo' path='Employee.name' switchable='locked' editable='true'/>" + 
+            "<constraint op='ONE OF' code='C' path='Employee.age' switchable='locked' editable='true'>" + 
+                "<value>17</value><value>23</value><value>37</value>" +
+            "</constraint>" + 
+            "<constraint op='IN' code='D' value='bar' path='Employee' switchable='locked' editable='true'/>" + 
+            "<constraint loopPath='Employee.department.manager' op='=' code='E' path='Employee' switchable='locked' editable='true'/>" +
+            "<constraint op='LOOKUP' code='F' value='quux' path='Employee' switchable='locked' editable='true'/>" + 
+            "<constraint extraValue='zip' op='LOOKUP' code='G' value='zop' path='Employee' switchable='locked' editable='true'/>" + 
+            "</query>" + 
+            "</template>"
+
+        q = PathQuery::Template.parser(@model).parse(src)
+
+        compare_xml expected, q.to_xml
+    end
+
 end
