@@ -34,7 +34,7 @@ class Model
         if cls.is_a?(ClassDescriptor)
             return cls
         else
-            return @classes[cls]
+            return @classes[cls.to_s]
         end
     end
 
@@ -49,7 +49,8 @@ class Model
         end
         # Prefer the options value to the passed value
         cd_name = opts["class"] || class_name
-        return get_cd(cd_name).to_class.new(opts)
+        cls = get_cd(cd_name).to_class
+        return cls.new(opts)
     end
 
     def resolve_path(obj, path)
@@ -88,6 +89,11 @@ end
 
 class InterMineObject
     attr_reader :objectId
+
+    def InterMineObject.class_name
+        return @class_name
+    end
+
     def initialize(hash=nil)
         hash ||= {}
         hash.each do |key, value|
@@ -104,6 +110,16 @@ class InterMineObject
             return super
         end
     end
+
+    def to_s
+        parts = [self.class.class_name + ':' + self.objectId.to_s]
+        self.instance_variables.reject{|var| var.to_s.end_with?("objectId")}.each do |var|
+            parts << "#{var}=#{self.instance_variable_get(var).inspect}"
+        end
+        return "<#{parts.join(' ')}>"
+    end
+
+    alias inspect to_s
 
     private 
     
@@ -229,6 +245,7 @@ class ClassDescriptor
             klass.class_eval do
                 include *supers
                 attr_reader *fd_names
+
             end
 
             @fields.values.each do |fd|
@@ -306,8 +323,10 @@ class ClassDescriptor
         if @klass.nil?
             mod = to_module
             kls = Class.new(InterMineObject)
+            class_n = self.name
             kls.class_eval do
                 include mod
+                @class_name = class_n
             end
             @klass = kls
         end
