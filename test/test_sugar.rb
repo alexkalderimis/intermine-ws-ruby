@@ -3,7 +3,6 @@ require "intermine/query"
 require "intermine/model"
 require "intermine/lists"
 require "intermine/service"
-
 require "test/unit"
 
 class Service
@@ -57,7 +56,7 @@ class TestQuerySugar < Test::Unit::TestCase
                         "<constraint op='IS NOT NULL' code='C' path='Employee.fullTime'/>" + 
                 "</query>"
         
-        assert_equal(expected, q.to_xml.to_s)
+        compare_xml(expected, q.to_xml)
     end
 
     def test_sugary_binaries
@@ -77,7 +76,7 @@ class TestQuerySugar < Test::Unit::TestCase
                         "<constraint op='!=' code='E' value='bar' path='Employee.name'/>" + 
                 "</query>"
         
-        assert_equal(expected, q.to_xml.to_s)
+        compare_xml(expected, q.to_xml)
     end
 
     def test_sugary_lookups
@@ -91,7 +90,7 @@ class TestQuerySugar < Test::Unit::TestCase
                         "<constraint extraValue='extra' op='LOOKUP' code='B' value='foo' path='Employee.department.company'/>" + 
                 "</query>"
         
-        assert_equal(expected, q.to_xml.to_s)
+        compare_xml(expected, q.to_xml)
     end
 
     def test_sugary_lists
@@ -111,7 +110,7 @@ class TestQuerySugar < Test::Unit::TestCase
                         "<constraint op='NOT IN' code='E' value='a list' path='Employee.department.company'/>" +
                 "</query>"
         
-        assert_equal(expected, q.to_xml.to_s)
+        compare_xml(expected, q.to_xml)
     end
 
     def test_sugary_multis
@@ -161,7 +160,7 @@ class TestQuerySugar < Test::Unit::TestCase
                         "</constraint>" + 
                 "</query>"
         
-        assert_equal(expected, q.to_xml.to_s)
+        compare_xml(expected, q.to_xml)
     end
 
     def test_sugary_loops
@@ -175,7 +174,7 @@ class TestQuerySugar < Test::Unit::TestCase
                         "<constraint op='!=' loopPath='Employee.department.employees' code='B' path='Employee.department.company.CEO'/>" + 
                 "</query>"
         
-        assert_equal(expected, q.to_xml.to_s)
+        compare_xml(expected, q.to_xml)
     end
 
     def test_sugary_subclasses
@@ -190,6 +189,6 @@ class TestQuerySugar < Test::Unit::TestCase
                         "<constraint type='CEO' path='Employee.department.employees'/>" +
                 "</query>"
         
-        assert_equal(expected, q.to_xml.to_s)
+        compare_xml(expected, q.to_xml)
     end
 end
