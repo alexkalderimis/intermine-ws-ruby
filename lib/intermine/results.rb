@@ -143,7 +143,7 @@ module Results
                 f.each_line do |line|
                     if line.start_with?("[")
                         begin
-                            row = ResultsRow.new(line.chomp("," + $/), @query.view)
+                            row = ResultsRow.new(line.chomp("," + $/), @query.views)
                         rescue => e
                             raise ServiceError, "Error parsing #{line}: #{e.message}"
                         end
@@ -163,7 +163,7 @@ module Results
             @uri.open(:method => :post, :body => query) do |f|
                 container = ''
                 f.each_line do |line|
-                    line.chomp!(",", $/)
+                    line.chomp!("," + $/)
                     if line.start_with?("{") and line.end_with?("}")
                         begin
                             data = JSON.parse(line)
