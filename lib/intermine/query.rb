@@ -257,19 +257,27 @@ module PathQuery
         end
 
         def each_row
-            rr = Results::ResultsReader.new(@url, params, @views)
+            rr = Results::ResultsReader.new(@url, self)
             rr.each_row {|row|
                 yield row
             }
         end
 
+        def each_result
+            rr = Results::ResultsReader.new(@url, self)
+            rr.each_result {|row|
+                yield row
+            }
+        end
+            
+
         def count
-            rr = Results::ResultsReader.new(@url, params, @views)
+            rr = Results::ResultsReader.new(@url, self)
             return rr.get_size
         end
 
         def results
-            rr = Results::ResultsReader.new(@url, params, @views)
+            rr = Results::ResultsReader.new(@url, self)
             res = []
             rr.each_row {|row|
                 res << row
@@ -338,8 +346,10 @@ module PathQuery
             return self
         end
 
-        def join(*args)
-            return add_join(*args)
+        alias join add_join
+
+        def outerjoin(path)
+            return add_join(path)
         end
 
         def add_sort_order(path, direction="ASC") 
@@ -909,7 +919,7 @@ module PathQuery
         @valid_directions = %w{ASC DESC}
 
         def initialize(path, direction) 
-            direction.upcase!
+            direction = direction.to_s.upcase
             unless SortOrder.valid_directions.include? direction
                 raise ArgumentError, "Illegal sort direction: #{direction}"
             end
