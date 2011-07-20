@@ -390,7 +390,7 @@
 659:             <span class="ruby-identifier">model</span> = <span class="ruby-ivar">@path</span>.<span class="ruby-identifier">model</span>
 660:             <span class="ruby-identifier">cdA</span> = <span class="ruby-identifier">model</span>.<span class="ruby-identifier">get_cd</span>(<span class="ruby-ivar">@path</span>.<span class="ruby-identifier">end_type</span>)
 661:             <span class="ruby-identifier">cdB</span> = <span class="ruby-identifier">model</span>.<span class="ruby-identifier">get_cd</span>(<span class="ruby-ivar">@sub_class</span>.<span class="ruby-identifier">end_type</span>)
-662:             <span class="ruby-keyword kw">if</span> <span class="ruby-operator">!</span><span class="ruby-identifier">cdB</span>.<span class="ruby-identifier">subclass_of</span>(<span class="ruby-identifier">cdA</span>)
+662:             <span class="ruby-keyword kw">if</span> <span class="ruby-operator">!</span><span class="ruby-identifier">cdB</span>.<span class="ruby-identifier">subclass_of?</span>(<span class="ruby-identifier">cdA</span>)
 663:                 <span class="ruby-identifier">raise</span> <span class="ruby-constant">ArgumentError</span>, <span class="ruby-node">&quot;The subclass in a #{self.class.name} must be a subclass of its path, but #{cdB} is not a subclass of #{cdA}&quot;</span>
 664:             <span class="ruby-keyword kw">end</span>
 665: 
@@ -471,7 +471,7 @@
       659:             &lt;span class=\&quot;ruby-identifier\&quot;&gt;model&lt;/span&gt; = &lt;span class=\&quot;ruby-ivar\&quot;&gt;@path&lt;/span&gt;.&lt;span class=\&quot;ruby-identifier\&quot;&gt;model&lt;/span&gt;\n\
       660:             &lt;span class=\&quot;ruby-identifier\&quot;&gt;cdA&lt;/span&gt; = &lt;span class=\&quot;ruby-identifier\&quot;&gt;model&lt;/span&gt;.&lt;span class=\&quot;ruby-identifier\&quot;&gt;get_cd&lt;/span&gt;(&lt;span class=\&quot;ruby-ivar\&quot;&gt;@path&lt;/span&gt;.&lt;span class=\&quot;ruby-identifier\&quot;&gt;end_type&lt;/span&gt;)\n\
       661:             &lt;span class=\&quot;ruby-identifier\&quot;&gt;cdB&lt;/span&gt; = &lt;span class=\&quot;ruby-identifier\&quot;&gt;model&lt;/span&gt;.&lt;span class=\&quot;ruby-identifier\&quot;&gt;get_cd&lt;/span&gt;(&lt;span class=\&quot;ruby-ivar\&quot;&gt;@sub_class&lt;/span&gt;.&lt;span class=\&quot;ruby-identifier\&quot;&gt;end_type&lt;/span&gt;)\n\
-      662:             &lt;span class=\&quot;ruby-keyword kw\&quot;&gt;if&lt;/span&gt; &lt;span class=\&quot;ruby-operator\&quot;&gt;!&lt;/span&gt;&lt;span class=\&quot;ruby-identifier\&quot;&gt;cdB&lt;/span&gt;.&lt;span class=\&quot;ruby-identifier\&quot;&gt;subclass_of&lt;/span&gt;(&lt;span class=\&quot;ruby-identifier\&quot;&gt;cdA&lt;/span&gt;)\n\
+      662:             &lt;span class=\&quot;ruby-keyword kw\&quot;&gt;if&lt;/span&gt; &lt;span class=\&quot;ruby-operator\&quot;&gt;!&lt;/span&gt;&lt;span class=\&quot;ruby-identifier\&quot;&gt;cdB&lt;/span&gt;.&lt;span class=\&quot;ruby-identifier\&quot;&gt;subclass_of?&lt;/span&gt;(&lt;span class=\&quot;ruby-identifier\&quot;&gt;cdA&lt;/span&gt;)\n\
       663:                 &lt;span class=\&quot;ruby-identifier\&quot;&gt;raise&lt;/span&gt; &lt;span class=\&quot;ruby-constant\&quot;&gt;ArgumentError&lt;/span&gt;, &lt;span class=\&quot;ruby-node\&quot;&gt;&amp;quot;The subclass in a #{self.class.name} must be a subclass of its path, but #{cdB} is not a subclass of #{cdA}&amp;quot;&lt;/span&gt;\n\
       664:             &lt;span class=\&quot;ruby-keyword kw\&quot;&gt;end&lt;/span&gt;\n\
       665: \n\

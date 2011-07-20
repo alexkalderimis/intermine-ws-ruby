@@ -816,7 +816,7 @@ a path.
 475:         <span class="ruby-keyword kw">else</span>
 476:             <span class="ruby-ivar">@extends</span>.<span class="ruby-identifier">each</span> <span class="ruby-keyword kw">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">x</span><span class="ruby-operator">|</span>
 477:                 <span class="ruby-identifier">superCls</span> = <span class="ruby-ivar">@model</span>.<span class="ruby-identifier">get_cd</span>(<span class="ruby-identifier">x</span>)
-478:                 <span class="ruby-keyword kw">if</span> <span class="ruby-identifier">superCls</span>.<span class="ruby-identifier">subclass_of</span>(<span class="ruby-identifier">path</span>)
+478:                 <span class="ruby-keyword kw">if</span> <span class="ruby-identifier">superCls</span>.<span class="ruby-identifier">subclass_of?</span>(<span class="ruby-identifier">path</span>)
 479:                     <span class="ruby-keyword kw">return</span> <span class="ruby-keyword kw">true</span>
 480:                 <span class="ruby-keyword kw">end</span>
 481:             <span class="ruby-keyword kw">end</span>
@@ -1352,7 +1352,7 @@ attribute columns selected for output and the given constraints applied.
       475:         &lt;span class=\&quot;ruby-keyword kw\&quot;&gt;else&lt;/span&gt;\n\
       476:             &lt;span class=\&quot;ruby-ivar\&quot;&gt;@extends&lt;/span&gt;.&lt;span class=\&quot;ruby-identifier\&quot;&gt;each&lt;/span&gt; &lt;span class=\&quot;ruby-keyword kw\&quot;&gt;do&lt;/span&gt; &lt;span class=\&quot;ruby-operator\&quot;&gt;|&lt;/span&gt;&lt;span class=\&quot;ruby-identifier\&quot;&gt;x&lt;/span&gt;&lt;span class=\&quot;ruby-operator\&quot;&gt;|&lt;/span&gt;\n\
       477:                 &lt;span class=\&quot;ruby-identifier\&quot;&gt;superCls&lt;/span&gt; = &lt;span class=\&quot;ruby-ivar\&quot;&gt;@model&lt;/span&gt;.&lt;span class=\&quot;ruby-identifier\&quot;&gt;get_cd&lt;/span&gt;(&lt;span class=\&quot;ruby-identifier\&quot;&gt;x&lt;/span&gt;)\n\
-      478:                 &lt;span class=\&quot;ruby-keyword kw\&quot;&gt;if&lt;/span&gt; &lt;span class=\&quot;ruby-identifier\&quot;&gt;superCls&lt;/span&gt;.&lt;span class=\&quot;ruby-identifier\&quot;&gt;subclass_of&lt;/span&gt;(&lt;span class=\&quot;ruby-identifier\&quot;&gt;path&lt;/span&gt;)\n\
+      478:                 &lt;span class=\&quot;ruby-keyword kw\&quot;&gt;if&lt;/span&gt; &lt;span class=\&quot;ruby-identifier\&quot;&gt;superCls&lt;/span&gt;.&lt;span class=\&quot;ruby-identifier\&quot;&gt;subclass_of?&lt;/span&gt;(&lt;span class=\&quot;ruby-identifier\&quot;&gt;path&lt;/span&gt;)\n\
       479:                     &lt;span class=\&quot;ruby-keyword kw\&quot;&gt;return&lt;/span&gt; &lt;span class=\&quot;ruby-keyword kw\&quot;&gt;true&lt;/span&gt;\n\
       480:                 &lt;span class=\&quot;ruby-keyword kw\&quot;&gt;end&lt;/span&gt;\n\
       481:             &lt;span class=\&quot;ruby-keyword kw\&quot;&gt;end&lt;/span&gt;\n\

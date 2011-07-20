@@ -17,9 +17,9 @@ end
 
 Rake::RDocTask.new do |t|
     t.title = 'InterMine Webservice Client Documentation'
-    t.rdoc_files.include 'README'
+    t.rdoc_files.include 'README.rdoc'
     t.rdoc_files.include 'lib/**/*rb'
-    t.main = 'README'
+    t.main = 'README.rdoc'
     t.options += ['-SHN', '-f', 'darkfish']
 end
 
