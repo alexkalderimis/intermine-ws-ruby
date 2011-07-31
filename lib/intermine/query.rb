@@ -200,12 +200,14 @@ module PathQuery
         HIGHEST_CODE = "Z"
 
         attr_accessor :name, :title, :root
-        attr_reader :model, :joins, :constraints, :views, :sort_order, :logic
+        attr_reader :model, :joins, :constraints, :views, :sort_order, :logic, :service, :list_upload_uri, :list_append_uri
 
         def initialize(model, root=nil, service=nil)
             @model = model
             @service = service
             @url = (@service.nil?) ? nil : @service.root + Service::QUERY_RESULTS_PATH
+            @list_upload_uri = (@service.nil?) ? nil : @service.root + Service::QUERY_TO_LIST_PATH
+            @list_append_uri = (@service.nil?) ? nil : @service.root + Service::QUERY_APPEND_PATH
             if root
                 @root = Path.new(root, model).rootClass
             end
@@ -259,18 +261,18 @@ module PathQuery
             return doc
         end
 
-        def results_reader
-            return Results::ResultsReader.new(@url, self)
+        def results_reader(start=0, size=nil)
+            return Results::ResultsReader.new(@url, self, start, size)
         end
 
-        def each_row
-            results_reader.each_row {|row|
+        def each_row(start=0, size=nil)
+            results_reader(start, size).each_row {|row|
                 yield row
             }
         end
 
-        def each_result
-            results_reader.each_result {|row|
+        def each_result(start=0, size=nil)
+            results_reader(start, size).each_result {|row|
                 yield row
             }
         end
@@ -279,12 +281,43 @@ module PathQuery
             return results_reader.get_size
         end
 
-        def results
+        def rows(start=0, size=nil)
             res = []
-            results_reader.each_row {|row|
+            results_reader(start, size).each_row {|row|
                 res << row
             }
             res
+        end
+
+        def results(start=0, size=nil)
+            res = []
+            results_reader(start, size).each_result {|row|
+                res << row
+            }
+            res
+        end
+
+        def all
+            return self.results
+        end
+
+        def all_rows
+            return self.rows
+        end
+        def first(start=0)
+            current_row = 0
+            # Have to iterate as start refers to row count
+            results_reader.each_result { |r|
+                if current_row == start
+                    return r
+                end
+                current_row += 1
+            }
+            return nil
+        end
+
+        def first_row(start = 0)
+            return self.results(start, 1).first
         end
         
         def get_constraint(code)
@@ -379,13 +412,8 @@ module PathQuery
             end
         end
 
-        def order_by(*args)
-            return add_sort_order(*args)
-        end
-
-        def order(*args)
-            return add_sort_order(*args)
-        end
+        alias order_by add_sort_order
+        alias order add_sort_order
 
         def add_constraint(*parameters)
             con = @constraint_factory.make_constraint(parameters)
@@ -398,6 +426,9 @@ module PathQuery
         end
 
         def where(*wheres)
+           if @views.empty?
+               self.select('*')
+           end
            wheres.each do |w|
              w.each do |k,v|
                 if v.is_a?(Hash)
@@ -431,7 +462,7 @@ module PathQuery
                                     parameters[:op] = normalised_k
                                 end
                                 parameters[:values] = subv.to_a
-                            elsif subv.is_a?(List)
+                            elsif subv.is_a?(Lists::List)
                                 if subk == "="
                                     parameters[:op] = "IN"
                                 elsif subk == "!="
@@ -451,7 +482,7 @@ module PathQuery
                     add_constraint(k.to_s, 'ONE OF', v.to_a)
                 elsif v.is_a?(ClassDescriptor)
                     add_constraint(:path => k.to_s, :sub_class => v.name)
-                elsif v.is_a?(List)
+                elsif v.is_a?(Lists::List)
                     add_constraint(k.to_s, 'IN', v.name)
                 elsif v.nil?
                     add_constraint(k.to_s, "IS NULL")
@@ -678,7 +709,7 @@ module PathQuery
             model = @path.model
             cdA = model.get_cd(@path.end_type)
             cdB = model.get_cd(@sub_class.end_type)
-            if !cdB == cdA and !cdB.subclass_of?(cdA)
+            unless ((cdB == cdA) or cdB.subclass_of?(cdA))
                 raise ArgumentError, "The subclass in a #{self.class.name} must be a subclass of its path, but #{cdB} is not a subclass of #{cdA}"
             end
 
@@ -1211,14 +1242,14 @@ module PathQuery
             return p
         end
 
-        def each_row(params = {})
+        def each_row(params = {}, start=0, size=nil)
             runner = (params.empty?) ? self : get_adjusted(params)
-            runner.results_reader.each_row {|r| yield r}
+            runner.results_reader(start, size).each_row {|r| yield r}
         end
 
-        def each_result(params = {}) 
+        def each_result(params = {}, start=0, size=nil) 
             runner = (params.empty?) ? self : get_adjusted(params)
-            runner.results_reader.each_result {|r| yield r}
+            runner.results_reader(start, size).each_result {|r| yield r}
         end
 
         def count(params = {})
