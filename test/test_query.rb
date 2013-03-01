@@ -1,3 +1,5 @@
+# encoding: UTF-8
+
 require File.dirname(__FILE__) + "/test_helper.rb"
 require "intermine/query"
 require "intermine/model"
@@ -38,27 +40,25 @@ class TestQuery < Test::Unit::TestCase
             "Employee.age", 
             "Employee.department.name"
         ]
-        expected = views.to_s
-
 
         query = InterMine::PathQuery::Query.new(@model)
         query.add_views("Employee.name", "Employee.age", 
                         "Employee.department.name")
-        assert_equal(query.views.to_s, expected)
+        assert_equal(query.views.map{ |x| x.to_s }, views)
             
 
         query = InterMine::PathQuery::Query.new(@model, "Employee")
         query.add_views("Employee.name", "Employee.age", 
                         "Employee.department.name")
-        assert_equal(query.views.to_s, expected)
+        assert_equal(query.views.map{ |x| x.to_s }, views)
 
         query = InterMine::PathQuery::Query.new(@model)
         query.add_views(views)
-        assert_equal(query.views.to_s, expected)
+        assert_equal(query.views.map{ |x| x.to_s }, views)
 
         query = InterMine::PathQuery::Query.new(@model, "Employee")
         query.add_views(views)
-        assert_equal(query.views.to_s, expected)
+        assert_equal(query.views.map{ |x| x.to_s }, views)
     end
 
     def test_bad_viewpath
@@ -83,15 +83,15 @@ class TestQuery < Test::Unit::TestCase
             "Employee.age", 
             "Employee.department.name"
         ]
-        expected = views.to_s
+        expected = views
 
         query = InterMine::PathQuery::Query.new(@model, "Employee")
         query.add_views("name", "age", "department.name")
-        assert_equal(query.views.to_s, expected)
+        assert_equal(query.views.map {|x| x.to_s }, expected)
 
         query = InterMine::PathQuery::Query.new(@model, "Employee")
         query.add_views(["name", "age", "department.name"])
-        assert_equal(query.views.to_s, expected)
+        assert_equal(query.views.map {|x| x.to_s }, expected)
     end
 
     def test_bad_unqualified_path
@@ -166,8 +166,8 @@ class TestQuery < Test::Unit::TestCase
             :sub_class => "Manager"
         })
         query.add_views("Department.employees.seniority")
-        expected = ["Department.employees.seniority"].to_s
-        assert_equal(query.views.to_s, expected)
+        expected = ["Department.employees.seniority"]
+        assert_equal(query.views.map {|x| x.to_s }, expected)
 
         query = InterMine::PathQuery::Query.new(@model)
         assert_raise InterMine::Metadata::PathException do
@@ -570,7 +570,7 @@ class TestQuery < Test::Unit::TestCase
         assert_equal(conA.loopPath.to_s, "Employee.department.company.departments")
     end
 
-    def test_bad_lookup_constraint
+    def test_bad_loop_constraint
         query = InterMine::PathQuery::Query.new(@model, "Employee")
         assert_raise ArgumentError do
             query.add_constraint({
@@ -638,6 +638,20 @@ class TestQuery < Test::Unit::TestCase
         assert_equal(conA.path.to_s, "Employee.department.name")
         assert_equal(conA.op, "ONE OF")
         assert_equal(conA.values, %w{Sales Marketing Janitorial})
+    end
+
+    def test_range_constraints
+        query = InterMine::PathQuery::Query.new(@model, "Employee")
+        query.add_constraint({
+            :path => "age",
+            :op => "WITHIN",
+            :values => %w{1..10 30..35}
+        })
+
+        conA = query.constraints.first
+        assert_equal(conA.path.to_s, "Employee.age")
+        assert_equal(conA.op, "WITHIN")
+        assert_equal(conA.values, ["1..10", "30..35"])
     end
 
     def test_bad_multi_constraint
@@ -976,6 +990,11 @@ class TestQuery < Test::Unit::TestCase
             :extra_value => "zip"
         })
         query.add_constraint({
+            :path => "age",
+            :op => "WITHIN",
+            :values => %w{1..10 30..35}
+        })
+        query.add_constraint({
             :path => "Employee",
             :sub_class => "Manager"
         })
@@ -992,6 +1011,9 @@ class TestQuery < Test::Unit::TestCase
         "<constraint loopPath='Employee.department.manager' op='=' code='E' path='Employee'/>" +
         "<constraint op='LOOKUP' code='F' value='quux' path='Employee'/>" + 
         "<constraint extraValue='zip' op='LOOKUP' code='G' value='zop' path='Employee'/>" + 
+        "<constraint op='WITHIN' code='H' path='Employee.age'>" +
+           "<value>1..10</value><value>30..35</value>" +
+        "</constraint>" +
         "</query>"
 
         compare_xml(expected, query.to_xml.to_s)

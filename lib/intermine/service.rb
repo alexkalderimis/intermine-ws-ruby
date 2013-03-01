@@ -1,4 +1,3 @@
-require 'rubygems'
 require 'intermine/model'
 require "intermine/query"
 require "intermine/lists"
@@ -108,6 +107,8 @@ module InterMine
         LIST_DIFFERENCE_PATH = "/lists/diff/json"
         LIST_INTERSECTION_PATH = "/lists/intersect/json"
         LIST_SUBTRACTION_PATH = "/lists/subtract/json"
+        LIST_TAG_PATH = "/list/tags/json"
+        LIST_ENRICHMENT_PATH = "/list/enrichment"
 
         # The webservice version. An integer that 
         # supplies information about what features are supported.
@@ -122,11 +123,13 @@ module InterMine
         
         # A collection of the names of any templates that this service was not able to parse,
         # and you will thus not be able to access.
-        :broken_templates
+        attr_reader :broken_templates
 
         def_delegators :@list_manager, 
-            :lists, :list, :list_names, :create_list, :delete_lists, :get_lists_with_tags,
-            :union_of, :intersection_of, :symmetric_difference_of, :subtract
+            :lists, :list, :list_names, :create_list, :delete_lists, 
+            :get_lists_with_tags,
+            :union_of, :intersection_of, :symmetric_difference_of, 
+            :subtract
 
         # Construct a new service.
         #
@@ -152,15 +155,22 @@ module InterMine
             end
             @root = root
             @token = token
-            begin
-                @version = fetch(@root + VERSION_PATH).to_i
-            rescue => e
-                raise ServiceError, "Error fetching version at #{@root + VERSION_PATH}: #{e.message}"
-            end
             @model = mock_model
             @_templates = nil
             @broken_templates = []
             @list_manager = InterMine::Lists::ListManager.new(self)
+
+            root_uri = URI.parse(@root)
+            @root_path = root_uri.path
+
+            @http = Net::HTTP.new(root_uri.host, root_uri.port)
+
+            v_path = @root + VERSION_PATH
+            begin
+                @version = fetch(v_path).to_i
+            rescue Exception => e
+                raise ServiceError, "Error fetching version at #{ v_path }: #{e.message}"
+            end
         end
 
         # Return the release string
@@ -219,21 +229,19 @@ module InterMine
         # Returns all the templates available to query against in the service 
         #
         def templates 
-            if @_templates.nil?
-                @_templates = {}
-                parser = InterMine::PathQuery::Template.parser(model)
-                template_xml = fetch(@root + TEMPLATES_PATH)
-                doc = REXML::Document.new(template_xml)
-                doc.elements.each("template-queries/template") do |t|
-                    begin
-                        temp = parser.parse(t)
-                        @_templates[temp.name] = temp
-                    rescue
-                        @broken_templates.push(t.attribute("name").value)
-                    end
+            parsed = {}
+            parser = InterMine::PathQuery::Template.parser(model)
+            template_xml = fetch(@root + TEMPLATES_PATH)
+            doc = REXML::Document.new(template_xml)
+            doc.elements.each("template-queries/template") do |t|
+                begin
+                    temp = parser.parse(t)
+                    parsed[temp.name] = temp
+                rescue
+                    @broken_templates.push(t.attribute("name").value)
                 end
             end
-            return @_templates
+            return parsed
         end
 
         # Get all the names of the available templates, in 
@@ -257,9 +265,19 @@ module InterMine
 
         # Retrieves data from a url with a get request.
         def fetch(url)
-            uri = URI.parse(url)
-            qs = params.map { |k,v| "#{k}=#{CGI::escape(v.to_s)}" }.join('&')
-            return Net::HTTP.get(uri.host, uri.path + (params.empty? ? "" : "?#{qs}"))
+            ps = params
+            qs = ps.empty? ? '' : '?' + ps.map{ |k,v| "#{k}=#{CGI::escape(v.to_s)}" }.join('&')
+            uri = URI.parse(url + qs)
+
+            req = Net::HTTP::Get.new(uri.path + qs)
+            resp = @http.request req
+
+            return case resp
+            when Net::HTTPSuccess
+                resp.body
+            else
+                raise ServiceError, resp.code, resp.body
+            end
         end
     end
 
