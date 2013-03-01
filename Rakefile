@@ -52,7 +52,6 @@ namespace :test do
         t.libs << "test"
         t.test_files = FileList['test/unit_tests.rb']
         t.verbose = true
-        puts "Running UNIT TESTS"
     end
 
     desc "Run the live integration tests"
@@ -60,7 +59,6 @@ namespace :test do
         t.libs << "test"
         t.test_files = FileList['test/live_test.rb'] << FileList['test/live_summary_test.rb'] << FileList['test/live_results.rb']
         t.verbose = false
-        puts "Running LIVE INTEGRATION TESTS"
     end
 
     desc "Run all tests"
