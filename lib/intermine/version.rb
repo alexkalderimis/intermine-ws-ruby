@@ -20,5 +20,5 @@ module Intermine
     #   0.98.09 - Major changes to results - now with thorough-going Enumerable support
     #   0.98.08 - Added column summary support
     #
-    VERSION = "1.01.01"
+    VERSION = "1.02.00""
 end
