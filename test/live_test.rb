@@ -59,6 +59,7 @@ class LiveDemoTest <  Test::Unit::TestCase
     end
 
     def testLazyReferenceFetching
+        @service.model.is_lazy = true
         list = @service.list("My-Favourite-Employees")
 
         deps = list.map {|emp| emp.department.name }
@@ -71,6 +72,7 @@ class LiveDemoTest <  Test::Unit::TestCase
     end
 
     def testLazyCollectionFetching
+        @service.model.is_lazy = true
         list = @service.list("My-Favourite-Employees")
         emps = list.map {|manager| manager.department.employees.map{|employee| employee.age}.sort }
         exp = [

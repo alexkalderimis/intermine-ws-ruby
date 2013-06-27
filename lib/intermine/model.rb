@@ -32,6 +32,9 @@ module Metadata
         BOOL_TYPES = ["Boolean", "boolean"]
         NUMERIC_TYPES = FLOAT_TYPES | INT_TYPES
 
+        # Whether this is a lazy model
+        attr_accessor :is_lazy
+
         # The name of the model
         attr_reader :name
 
@@ -52,6 +55,7 @@ module Metadata
         def initialize(model_data, service=nil) 
             result = JSON.parse(model_data)
             @model = result["model"]
+            @is_lazy = false
             @service = service
             @name = @model["name"]
             @classes = {}
@@ -544,7 +548,8 @@ module Metadata
                     if fd.is_a?(ReferenceDescriptor)
                         klass.class_eval do 
                             define_method(fd.name) do 
-                                if instance_variable_get("@" + fd.name).nil? and not instance_variable_get("@" + fd.name + "_ISNULL")
+                                instance_var = instance_variable_get("@" + fd.name)
+                                if fd.referencedType.model.is_lazy and instance_var.nil? and not instance_variable_get("@" + fd.name + "_ISNULL")
                                     q = __cd__.select(:id, fd.name + ".*").where(:id => objectId).outerjoin(fd.name)
                                     first_result = q.results.first
                                     unless first_result.nil?
@@ -559,7 +564,11 @@ module Metadata
                                         instance_variable_set("@" + fd.name, instance_var)
                                     end
                                 end
-                                return instance_variable_get("@" + fd.name)
+                                if instance_var.nil? and fd.is_a?(CollectionDescriptor)
+                                    return []
+                                else
+                                    return instance_var
+                                end
                             end
                         end
                     end
