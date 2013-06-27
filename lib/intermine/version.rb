@@ -3,6 +3,7 @@ module Intermine
     # Webservice Client Version number
     #
     # Changes:
+    #   1.01.01 - Inproved lazy reference fetching
     #   1.01.00 - Test compatibility with 1.8.7, 1.9.2, 2.0.0-rc1
     #             Numerous bug fixes.
     #   1.00.00 - Up to make use of new features of the InterMine 1.0 API

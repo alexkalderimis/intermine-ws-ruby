@@ -1,7 +1,7 @@
 $LOAD_PATH << File.expand_path( File.dirname(__FILE__) + '/../lib' )
 require "intermine/service"
 
-service = Service.new("http://squirrel.flymine.org/intermine-test/service")
+service = Service.new("http://localhost:8080/intermine-test/service")
 
 p service.version
 p service.model.name
@@ -20,7 +20,7 @@ end
 puts "Average => #{sum/total} - #{total} employees"
 puts
 
-tok_service = Service.new("http://squirrel.flymine.org/intermine-test/service", "a1v3V1X0f3hdmaybq0l6b7Z4eVG")
+tok_service = Service.new("http://localhost:8080/intermine-test/service", "a1v3V1X0f3hdmaybq0l6b7Z4eVG")
 
 q = tok_service.new_query("Employee")
 q.add_views("name", "age")

@@ -544,10 +544,20 @@ module Metadata
                     if fd.is_a?(ReferenceDescriptor)
                         klass.class_eval do 
                             define_method(fd.name) do 
-                                if instance_variable_get("@" + fd.name).nil?
-                                    q = __cd__.select(fd.name + ".*").where(:id => objectId)
-                                    instance_var = q.results.first[fd.name]
-                                    instance_variable_set("@" + fd.name, instance_var)
+                                if instance_variable_get("@" + fd.name).nil? and not instance_variable_get("@" + fd.name + "_ISNULL")
+                                    q = __cd__.select(:id, fd.name + ".*").where(:id => objectId).outerjoin(fd.name)
+                                    first_result = q.results.first
+                                    unless first_result.nil?
+                                        instance_var = first_result[fd.name]
+                                        if instance_var.nil?
+                                            if fs.is_a?(CollectionDescriptor) and instance_var.nil?
+                                                instance_var = []
+                                            else
+                                                instance_variable_set("@" + fd.name + "_ISNULL", true)
+                                            end
+                                        end
+                                        instance_variable_set("@" + fd.name, instance_var)
+                                    end
                                 end
                                 return instance_variable_get("@" + fd.name)
                             end
@@ -576,18 +586,22 @@ module Metadata
                                 type = fd.referencedType
                                 if fd.is_a?(CollectionDescriptor)
                                     instance_var = []
-                                    val.each do |item|
-                                        if item.is_a?(Hash)
-                                            item = type.model.make_new(type.name, item)
+                                    unless val.nil?
+                                        val.each do |item|
+                                            if item.is_a?(Hash)
+                                                item = type.model.make_new(type.name, item)
+                                            end
+                                            if !item.is_a?(type)
+                                                raise ArgumentError, "Arguments to #{fd.name} in #{@name} must be #{type.name}s"
+                                            end
+                                            instance_var << item
                                         end
-                                        if !item.is_a?(type)
-                                            raise ArgumentError, "Arguments to #{fd.name} in #{@name} must be #{type.name}s"
-                                        end
-                                        instance_var << item
                                     end
                                     instance_variable_set("@" + fd.name, instance_var)
                                 else
-                                    if val.is_a?(Hash)
+                                    if val.nil?
+                                        instance_variable_set("@" + fd.name + "_ISNULL", true)
+                                    elsif val.is_a?(Hash)
                                         val = type.model.make_new(type.name, val)
                                     end
                                     if !val.is_a?(type)

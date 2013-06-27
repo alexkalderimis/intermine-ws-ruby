@@ -8,7 +8,7 @@ require "intermine/results"
 class LiveResultsTest < Test::Unit::TestCase
 
     def setup
-        @service = Service.new("http://localhost/intermine-test")
+        @service = Service.new("http://localhost:8080/intermine-test")
         @max = 50
         @q = @service.query("Employee").select("*", "department.*").where(:age => {:lt => @max})
         @empty = @service.query("Employee").where(:name => "some-non-existant-value")
@@ -141,7 +141,7 @@ end
 class LiveTemplateResultsTest < LiveResultsTest 
 
     def setup
-        @service = Service.new("http://localhost/intermine-test")
+        @service = Service.new("http://localhost:8080/intermine-test")
         @q = @service.template("employeesOverACertainAgeFromDepartmentA")
         @empty = @q
         @exp_count = 18

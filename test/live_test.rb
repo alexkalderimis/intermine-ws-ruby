@@ -6,7 +6,7 @@ require "intermine/service"
 class LiveDemoTest <  Test::Unit::TestCase
 
     def setup
-        @service = Service.new("http://localhost/intermine-test", "test-user-token")
+        @service = Service.new("http://localhost:8080/intermine-test", "test-user-token")
         @temp_lists = []
     end
 
@@ -72,7 +72,7 @@ class LiveDemoTest <  Test::Unit::TestCase
 
     def testLazyCollectionFetching
         list = @service.list("My-Favourite-Employees")
-        emps = list.map {|manager| manager.department.employees.map {|employee| employee.age} }
+        emps = list.map {|manager| manager.department.employees.map{|employee| employee.age}.sort }
         exp = [
             [34, 36, 41, 55, 61, 61],
             [44, 49, 62],

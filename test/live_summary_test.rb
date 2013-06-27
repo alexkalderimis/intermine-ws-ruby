@@ -6,7 +6,7 @@ require "intermine/service"
 class LiveSummaryTest < Test::Unit::TestCase
 
     def setup
-        @service = Service.new("http://localhost/intermine-test")
+        @service = Service.new("http://localhost:8080/intermine-test")
         @query = @service.query("Employee").where(:age => {:lt => 50})
     end
 

@@ -11,7 +11,7 @@ q.add_views("name", "age")
 q.add_constraint({:path => "age", :op => ">", :value => 40})
 q.add_sort_order("age")
 params = {"query" => q.to_xml, "format" => "jsonrows"}
-uri = "http://squirrel.flymine.org/intermine-test/service/query/results"
+uri = "http://localhost:8080/intermine-test/service/query/results"
 rr = Results::ResultsReader.new(uri, params, q.views)
 sum, total = 0, 0
 rr.each_row {|emp| 
