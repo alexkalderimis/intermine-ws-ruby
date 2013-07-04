@@ -543,6 +543,10 @@ module InterMine::PathQuery
             end
         end
 
+        def sequences(range)
+            return Results::SeqReader.new(@service.root, clone, range)
+        end
+
         # Return all result record objects returned by running this query.
         def all
             return self.results

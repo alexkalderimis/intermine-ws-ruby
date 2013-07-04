@@ -390,6 +390,32 @@ module InterMine::Results
 
     end
 
+    class JsonReader < ResultsReader
+
+        include Enumerable
+
+        def each
+            processor = lambda { |line|
+                x = line.chomp.chomp(",")
+                x.empty? ? nil : JSON.parse(x)
+            }
+            read_result_set(params("json"), processor) { |x| yield x }
+        end
+    end
+
+    class SeqReader < JsonReader
+
+        def initialize(base, query, range = {})
+            super(base + Service::SEQUENCE_PATH, query, 0, nil)
+            @range = range
+        end
+
+        def params(format = "json")
+            @query.params.merge(@range)
+        end
+
+    end
+
     class SummaryReader < ResultsReader
 
         include Enumerable

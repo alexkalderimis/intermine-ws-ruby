@@ -95,6 +95,7 @@ module InterMine
         MODEL_PATH = "/model/json"
         TEMPLATES_PATH = "/templates"
         QUERY_RESULTS_PATH = "/query/results"
+        SEQUENCE_PATH = "/sequence"
         QUERY_TO_LIST_PATH = "/query/tolist/json"
         QUERY_APPEND_PATH = "/query/append/tolist/json"
         TEMPLATE_RESULTS_PATH = "/template/results"

@@ -136,6 +136,15 @@ class LiveResultsTest < Test::Unit::TestCase
         trideps = @q.summaries("department.name", *@summary_args).select {|s| s["count"] == @dep_size}
         assert_equal(@exp_trideps, trideps.length)
     end
+
+    def testSubSequences
+       q = @service.query("Employee").select(:name).where(:name => "D*")
+       c = q.count
+       seqs = q.sequences(:start => 1, :end => 5).map {|s| s["seq"]}
+       assert_equal(c, seqs.size)
+       assert(seqs.all? {|s| s.size == 4})
+    end
+
 end
 
 class LiveTemplateResultsTest < LiveResultsTest 
