@@ -3,6 +3,7 @@ module Intermine
     # Webservice Client Version number
     #
     # Changes:
+    #   1.03.00 - Add support for indexed sequence service
     #   1.02.00 - Allow the lazy fetching to be optional
     #   1.01.01 - Improved lazy reference fetching
     #   1.01.00 - Test compatibility with 1.8.7, 1.9.2, 2.0.0-rc1
@@ -20,5 +21,5 @@ module Intermine
     #   0.98.09 - Major changes to results - now with thorough-going Enumerable support
     #   0.98.08 - Added column summary support
     #
-    VERSION = "1.02.00"
+    VERSION = "1.03.00"
 end
